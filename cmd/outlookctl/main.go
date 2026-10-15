@@ -286,6 +286,12 @@ func runMail(args []string) error {
 		return runMailFolderRename(args[1:])
 	case "folder-delete":
 		return runMailFolderDelete(args[1:])
+	case "flag":
+		return runMailSetFlag(args[1:], true)
+	case "unflag":
+		return runMailSetFlag(args[1:], false)
+	case "importance":
+		return runMailSetImportance(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -1392,6 +1398,108 @@ func runMailFolderDelete(args []string) error {
 	return nil
 }
 
+// runMailSetFlag 设置或取消邮件旗标。
+func runMailSetFlag(args []string, flagged bool) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail flag|unflag <message-id> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SetMessageFlag(ctx, loginResult.AccessToken, target.MessageID, flagged); err != nil {
+		return err
+	}
+
+	state := "已取消旗标"
+	if flagged {
+		state = "已设置旗标"
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件%s: %s\n", state, target.MessageID)
+	return nil
+}
+
+// runMailSetImportance 设置邮件重要性。
+func runMailSetImportance(args []string) error {
+	var account, level, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--level":
+			if i+1 >= len(args) {
+				return errors.New("--level 缺少值")
+			}
+			i++
+			level = args[i]
+		case strings.HasPrefix(arg, "--level="):
+			level = strings.TrimPrefix(arg, "--level=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || level == "" {
+		return errors.New("用法: outlookctl mail importance <message-id> --level low|normal|high [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SetMessageImportance(ctx, loginResult.AccessToken, messageID, level); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件重要性已设置为 %s: %s\n", level, messageID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -1421,5 +1529,8 @@ func printUsage() {
   outlookctl mail folder-create --name <名称>  创建文件夹
   outlookctl mail folder-rename <id> --name <名称>  重命名文件夹
   outlookctl mail folder-delete <id>         删除文件夹
+  outlookctl mail flag <message-id>         设置邮件旗标
+  outlookctl mail unflag <message-id>       取消邮件旗标
+  outlookctl mail importance <message-id> --level low|normal|high  设置重要性
   outlookctl version                       查看版本`)
 }

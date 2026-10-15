@@ -162,6 +162,19 @@ type mailFolderDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailFlagArgs 是 mail_flag / mail_unflag tool 的输入参数。
+type mailFlagArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailImportanceArgs 是 mail_set_importance tool 的输入参数。
+type mailImportanceArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Level   string `json:"level" jsonschema:"重要性：low、normal 或 high"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -235,6 +248,21 @@ func main() {
 		Name:        "mail_folder_delete",
 		Description: "删除邮件文件夹",
 	}, mailFolderDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_flag",
+		Description: "设置邮件旗标",
+	}, mailFlagHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_unflag",
+		Description: "取消邮件旗标",
+	}, mailUnflagHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_set_importance",
+		Description: "设置邮件重要性",
+	}, mailImportanceHandler)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mail_move",
@@ -1045,6 +1073,91 @@ func mailFolderDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args
 		"success":  true,
 		"account":  selected.Username,
 		"folderId": args.ID,
+	})
+}
+
+// mailFlagHandler 设置邮件旗标。
+func mailFlagHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFlagArgs) (*mcp.CallToolResult, any, error) {
+	return setMessageFlag(ctx, args, true)
+}
+
+// mailUnflagHandler 取消邮件旗标。
+func mailUnflagHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFlagArgs) (*mcp.CallToolResult, any, error) {
+	return setMessageFlag(ctx, args, false)
+}
+
+// setMessageFlag 是 mail_flag / mail_unflag 的共用实现。
+func setMessageFlag(ctx context.Context, args mailFlagArgs, flagged bool) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetMessageFlag(ctx, loginResult.AccessToken, args.ID, flagged); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"flagged":   flagged,
+	})
+}
+
+// mailImportanceHandler 设置邮件重要性。
+func mailImportanceHandler(ctx context.Context, req *mcp.CallToolRequest, args mailImportanceArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.Level) == "" {
+		return nil, nil, fmt.Errorf("重要性不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetMessageImportance(ctx, loginResult.AccessToken, args.ID, args.Level); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"level":     args.Level,
 	})
 }
 

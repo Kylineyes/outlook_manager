@@ -81,3 +81,60 @@ func DeleteMessage(ctx context.Context, accessToken, messageID string) error {
 	}
 	return nil
 }
+
+// patchMessageProperties 统一封装对邮件属性的 PATCH 更新。
+func patchMessageProperties(ctx context.Context, accessToken, messageID string, payload any) error {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return fmt.Errorf("邮件 ID 不能为空")
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化邮件属性请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/messages/" + url.PathEscape(messageID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建邮件属性请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 更新邮件属性失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 更新邮件属性返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// SetMessageFlag 设置或取消邮件的后续处理旗标。
+func SetMessageFlag(ctx context.Context, accessToken, messageID string, flagged bool) error {
+	status := "notFlagged"
+	if flagged {
+		status = "flagged"
+	}
+	return patchMessageProperties(ctx, accessToken, messageID, map[string]any{
+		"flag": map[string]string{"flagStatus": status},
+	})
+}
+
+// SetMessageImportance 设置邮件重要性。
+// importance 支持 low、normal、high。
+func SetMessageImportance(ctx context.Context, accessToken, messageID, importance string) error {
+	importance = strings.ToLower(strings.TrimSpace(importance))
+	switch importance {
+	case "low", "normal", "high":
+	default:
+		return fmt.Errorf("不支持的邮件重要性: %s", importance)
+	}
+	return patchMessageProperties(ctx, accessToken, messageID, map[string]string{
+		"importance": importance,
+	})
+}
