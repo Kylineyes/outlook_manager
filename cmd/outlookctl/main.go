@@ -331,18 +331,50 @@ func runMailList(args []string) error {
 }
 
 // runMailRead 读取单封邮件详情。
+// messageTarget 表示需要指定邮件 ID 和可选账号的命令参数。
+type messageTarget struct {
+	MessageID string
+	Account   string
+	JSON      bool
+}
+
+// parseMessageTargetArgs 手动解析邮件 ID、账号和 JSON 参数。
+// 标准库 flag 在遇到第一个非 flag 参数后会停止解析，因此这里手写解析，
+// 让 --json、--account 可以出现在邮件 ID 前后任意位置。
+func parseMessageTargetArgs(args []string, allowJSON bool) (messageTarget, error) {
+	var result messageTarget
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--json" && allowJSON:
+			result.JSON = true
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return result, errors.New("--account 缺少值")
+			}
+			i++
+			result.Account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			result.Account = strings.TrimPrefix(arg, "--account=")
+		case strings.HasPrefix(arg, "-"):
+			return result, fmt.Errorf("未知参数: %s", arg)
+		default:
+			if result.MessageID != "" {
+				return result, errors.New("只能指定一个邮件 ID")
+			}
+			result.MessageID = arg
+		}
+	}
+	if result.MessageID == "" {
+		return result, errors.New("缺少邮件 ID")
+	}
+	return result, nil
+}
 func runMailRead(args []string) error {
-	fs := flag.NewFlagSet("mail read", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
-		return err
+	target, err := parseMessageTargetArgs(args, true)
+	if err != nil {
+		return errors.New("用法: outlookctl mail read <message-id> [--json] [--account <email>]")
 	}
-	if fs.NArg() == 0 {
-		return errors.New("用法: outlookctl mail read <message-id>")
-	}
-	messageID := fs.Arg(0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -355,7 +387,7 @@ func runMailRead(args []string) error {
 	if err != nil {
 		return err
 	}
-	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	selected, err := auth.SelectAccount(accounts, target.Account)
 	if err != nil {
 		return err
 	}
@@ -363,12 +395,12 @@ func runMailRead(args []string) error {
 	if err != nil {
 		return err
 	}
-	detail, err := graph.GetMessage(ctx, loginResult.AccessToken, messageID)
+	detail, err := graph.GetMessage(ctx, loginResult.AccessToken, target.MessageID)
 	if err != nil {
 		return err
 	}
 
-	if *jsonFlag {
+	if target.JSON {
 		data, err := json.MarshalIndent(detail, "", "  ")
 		if err != nil {
 			return fmt.Errorf("序列化邮件详情失败: %w", err)
@@ -394,16 +426,10 @@ func runMailRead(args []string) error {
 
 // runMailSetRead 修改单封邮件的已读状态。
 func runMailSetRead(args []string, isRead bool) error {
-	fs := flag.NewFlagSet("mail mark", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
-		return err
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail mark-read|mark-unread <message-id> [--account <email>]")
 	}
-	if fs.NArg() == 0 {
-		return errors.New("用法: outlookctl mail mark-read|mark-unread <message-id>")
-	}
-	messageID := fs.Arg(0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -416,7 +442,7 @@ func runMailSetRead(args []string, isRead bool) error {
 	if err != nil {
 		return err
 	}
-	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	selected, err := auth.SelectAccount(accounts, target.Account)
 	if err != nil {
 		return err
 	}
@@ -424,7 +450,7 @@ func runMailSetRead(args []string, isRead bool) error {
 	if err != nil {
 		return err
 	}
-	if err := graph.SetMessageRead(ctx, loginResult.AccessToken, messageID, isRead); err != nil {
+	if err := graph.SetMessageRead(ctx, loginResult.AccessToken, target.MessageID, isRead); err != nil {
 		return err
 	}
 
@@ -433,7 +459,7 @@ func runMailSetRead(args []string, isRead bool) error {
 		state = "未读"
 	}
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
-	fmt.Fprintf(os.Stdout, "邮件已标记为%s: %s\n", state, messageID)
+	fmt.Fprintf(os.Stdout, "邮件已标记为%s: %s\n", state, target.MessageID)
 	return nil
 }
 
