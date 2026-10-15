@@ -23,7 +23,7 @@ Outlook Manager 是一个本地工具，通过 Microsoft Graph 官方 API 操作
 - Graph：`github.com/microsoftgraph/msgraph-sdk-go`，必要时直接调用 Microsoft Graph REST API。
 - MCP：`github.com/modelcontextprotocol/go-sdk`。
 - 本地加密：Windows 下使用 DPAPI，保护 token cache。
-- 模块路径：`github.com/Kylineyes/outlook_manager`。
+- 模块路径：`github.com/Kylineyes/outlook-manager`。
 
 ### 3.2 目录结构
 
