@@ -248,6 +248,8 @@ func runMail(args []string) error {
 	switch args[0] {
 	case "list":
 		return runMailList(args[1:])
+	case "read":
+		return runMailRead(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -324,6 +326,68 @@ func runMailList(args []string) error {
 	return nil
 }
 
+// runMailRead 读取单封邮件详情。
+func runMailRead(args []string) error {
+	fs := flag.NewFlagSet("mail read", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() == 0 {
+		return errors.New("用法: outlookctl mail read <message-id>")
+	}
+	messageID := fs.Arg(0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	detail, err := graph.GetMessage(ctx, loginResult.AccessToken, messageID)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(detail, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化邮件详情失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "主题: %s\n", detail.Subject)
+	if detail.From.EmailAddress.Address != "" {
+		fmt.Fprintf(os.Stdout, "发件人: %s <%s>\n", detail.From.EmailAddress.Name, detail.From.EmailAddress.Address)
+	}
+	fmt.Fprintf(os.Stdout, "收件时间: %s\n", detail.ReceivedDateTime.Local().Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(os.Stdout, "已读: %v\n", detail.IsRead)
+	if detail.WebLink != "" {
+		fmt.Fprintf(os.Stdout, "链接: %s\n", detail.WebLink)
+	}
+	fmt.Fprintln(os.Stdout, "正文:")
+	fmt.Fprintln(os.Stdout, detail.Body.Content)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -334,5 +398,6 @@ func printUsage() {
   outlookctl account list                  查看本地账号档案
   outlookctl account use <email>           切换默认账号
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
+  outlookctl mail read <message-id>         读取单封邮件详情
   outlookctl version                       查看版本`)
 }

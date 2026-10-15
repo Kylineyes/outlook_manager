@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -31,6 +32,12 @@ type emptyArgs struct{}
 type mailListArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
+}
+
+// mailReadArgs 是 mail_read tool 的输入参数。
+type mailReadArgs struct {
+	ID      string `json:"id" jsonschema:"要读取的邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -71,6 +78,11 @@ func main() {
 		Name:        "mail_list",
 		Description: "读取指定账号或默认账号收件箱中的最新邮件",
 	}, mailListHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_read",
+		Description: "根据邮件 ID 读取单封邮件详情",
+	}, mailReadHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -155,6 +167,38 @@ func mailListHandler(ctx context.Context, req *mcp.CallToolRequest, args mailLis
 		Account:  selected.Username,
 		Messages: messages,
 	})
+}
+
+// mailReadHandler 根据邮件 ID 读取单封邮件详情。
+func mailReadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailReadArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	detail, err := graph.GetMessage(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(detail)
 }
 
 // jsonResult 把任意结构序列化成缩进 JSON，并包装成 MCP 文本结果。
