@@ -250,6 +250,10 @@ func runMail(args []string) error {
 		return runMailList(args[1:])
 	case "read":
 		return runMailRead(args[1:])
+	case "mark-read":
+		return runMailSetRead(args[1:], true)
+	case "mark-unread":
+		return runMailSetRead(args[1:], false)
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -388,6 +392,51 @@ func runMailRead(args []string) error {
 	return nil
 }
 
+// runMailSetRead 修改单封邮件的已读状态。
+func runMailSetRead(args []string, isRead bool) error {
+	fs := flag.NewFlagSet("mail mark", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() == 0 {
+		return errors.New("用法: outlookctl mail mark-read|mark-unread <message-id>")
+	}
+	messageID := fs.Arg(0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SetMessageRead(ctx, loginResult.AccessToken, messageID, isRead); err != nil {
+		return err
+	}
+
+	state := "已读"
+	if !isRead {
+		state = "未读"
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已标记为%s: %s\n", state, messageID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -399,5 +448,7 @@ func printUsage() {
   outlookctl account use <email>           切换默认账号
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail read <message-id>         读取单封邮件详情
+  outlookctl mail mark-read <message-id>    标记邮件为已读
+  outlookctl mail mark-unread <message-id>  标记邮件为未读
   outlookctl version                       查看版本`)
 }

@@ -40,6 +40,12 @@ type mailReadArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailMarkArgs 是 mail_mark_read / mail_mark_unread tool 的输入参数。
+type mailMarkArgs struct {
+	ID      string `json:"id" jsonschema:"要操作的邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -83,6 +89,16 @@ func main() {
 		Name:        "mail_read",
 		Description: "根据邮件 ID 读取单封邮件详情",
 	}, mailReadHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_mark_read",
+		Description: "把指定邮件标记为已读",
+	}, mailMarkReadHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_mark_unread",
+		Description: "把指定邮件标记为未读",
+	}, mailMarkUnreadHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -199,6 +215,52 @@ func mailReadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRea
 		return nil, nil, err
 	}
 	return jsonResult(detail)
+}
+
+// mailMarkReadHandler 把邮件标记为已读。
+func mailMarkReadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMarkArgs) (*mcp.CallToolResult, any, error) {
+	return markMessageRead(ctx, args, true)
+}
+
+// mailMarkUnreadHandler 把邮件标记为未读。
+func mailMarkUnreadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMarkArgs) (*mcp.CallToolResult, any, error) {
+	return markMessageRead(ctx, args, false)
+}
+
+// markMessageRead 是 mail_mark_read / mail_mark_unread 的共用实现。
+func markMessageRead(ctx context.Context, args mailMarkArgs, isRead bool) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetMessageRead(ctx, loginResult.AccessToken, args.ID, isRead); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"isRead":    isRead,
+	})
 }
 
 // jsonResult 把任意结构序列化成缩进 JSON，并包装成 MCP 文本结果。
