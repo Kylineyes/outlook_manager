@@ -1,26 +1,248 @@
 // Package main 是 outlookctl 命令行工具的入口。
 //
-// 当前阶段只实现最小可执行骨架，用于验证：
-//  1. Go module 初始化正确。
-//  2. Windows amd64 交叉编译流水线可用。
-//  3. 后续 auth、account、mail 等子命令有统一挂载位置。
-//
-// 该文件暂时不包含业务逻辑，避免在认证与数据存储方案落地前
-// 过早固化命令结构。
+// 当前阶段实现认证与账号管理的最小闭环：
+//   - auth login：通过 Device Code 登录并加密保存 token。
+//   - auth status：验证本地 token 缓存是否可以静默刷新。
+//   - account list：查看可读账号档案，便于人工确认。
+//   - account use：切换默认账号。
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"time"
+
+	"github.com/Kylineyes/outlook-manager/internal/auth"
+	"github.com/Kylineyes/outlook-manager/internal/graph"
+	"github.com/Kylineyes/outlook-manager/internal/store"
 )
 
 // version 表示当前构建版本。
-// 默认值用于本地开发；正式发布时可由构建脚本通过 -ldflags 注入。
+// 默认值用于本地开发；正式发布时由 GitHub Actions 通过 -ldflags 注入 tag。
 var version = "dev"
 
-// main 输出最小启动信息后退出。
-// 后续会在这里接入命令行解析库，并按子命令分发到 internal 包。
+// main 负责捕获错误并设置进程退出码。
 func main() {
-	fmt.Fprintf(os.Stdout, "outlookctl %s\n", version)
-	fmt.Fprintln(os.Stdout, "当前为项目骨架，auth、account、mail 等命令尚未实现。")
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "outlookctl: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// run 根据第一个参数分发子命令。
+func run(args []string) error {
+	if len(args) == 0 {
+		printUsage()
+		return nil
+	}
+
+	switch args[0] {
+	case "auth":
+		return runAuth(args[1:])
+	case "account":
+		return runAccount(args[1:])
+	case "version", "--version", "-v":
+		fmt.Fprintf(os.Stdout, "outlookctl %s\n", version)
+		return nil
+	case "help", "--help", "-h":
+		printUsage()
+		return nil
+	default:
+		printUsage()
+		return fmt.Errorf("未知命令: %s", args[0])
+	}
+}
+
+// runAuth 处理 auth 子命令。
+func runAuth(args []string) error {
+	if len(args) == 0 {
+		printUsage()
+		return errors.New("auth 需要指定子命令: login 或 status")
+	}
+	switch args[0] {
+	case "login":
+		return runAuthLogin()
+	case "status":
+		return runAuthStatus()
+	default:
+		printUsage()
+		return fmt.Errorf("未知 auth 子命令: %s", args[0])
+	}
+}
+
+// runAuthLogin 执行 Device Code 登录，并把账号档案保存到本地。
+func runAuthLogin() error {
+	// Device Code 通常有 15 分钟有效期，这里留出足够时间给用户完成浏览器授权。
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintln(os.Stdout, "开始 Device Code 登录...")
+	result, err := client.LoginDeviceCode(ctx, os.Stdout)
+	if err != nil {
+		return err
+	}
+
+	record := store.AccountRecord{
+		Username:             result.Account.Username,
+		HomeAccountID:        result.Account.HomeAccountID,
+		Environment:          result.Account.Environment,
+		TenantID:             result.Account.TenantID,
+		DisplayName:          result.Account.DisplayName,
+		Scopes:               append([]string(nil), result.Account.Scopes...),
+		LastLoginAt:          time.Now().UTC().Format(time.RFC3339),
+		AccessTokenExpiresAt: result.Account.ExpiresAt.Format(time.RFC3339),
+		RefreshTokenCached:   result.Account.RefreshTokenCached,
+	}
+
+	// 登录成功后再调用 /me 获取显示名；即使失败也不影响 token 已经持久化。
+	me, meErr := graph.GetMe(ctx, result.AccessToken)
+	if meErr != nil {
+		fmt.Fprintf(os.Stderr, "警告: 登录成功，但读取 Microsoft Graph /me 失败: %v\n", meErr)
+	} else {
+		if me.DisplayName != "" {
+			record.DisplayName = me.DisplayName
+		}
+		if me.UserPrincipalName != "" {
+			record.Username = me.UserPrincipalName
+		}
+	}
+
+	accounts, err := store.UpsertAccount(record)
+	if err != nil {
+		return fmt.Errorf("保存账号档案失败: %w", err)
+	}
+
+	fmt.Fprintln(os.Stdout, "登录成功")
+	fmt.Fprintf(os.Stdout, "账号: %s\n", record.Username)
+	if record.DisplayName != "" {
+		fmt.Fprintf(os.Stdout, "显示名: %s\n", record.DisplayName)
+	}
+	fmt.Fprintf(os.Stdout, "默认账号: %s\n", accounts.DefaultAccount)
+	return nil
+}
+
+// runAuthStatus 验证本地 token 缓存，并尝试为每个账号静默刷新 access token。
+func runAuthStatus() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	if len(accounts) == 0 {
+		fmt.Fprintln(os.Stdout, "本地没有已登录账号。")
+		return nil
+	}
+
+	accountsFile, err := store.LoadAccounts()
+	if err != nil {
+		return err
+	}
+	if accountsFile.DefaultAccount != "" {
+		fmt.Fprintf(os.Stdout, "默认账号: %s\n", accountsFile.DefaultAccount)
+	}
+
+	for _, account := range accounts {
+		fmt.Fprintf(os.Stdout, "- %s\n", account.Username)
+		if account.HomeAccountID != "" {
+			fmt.Fprintf(os.Stdout, "  homeAccountId: %s\n", account.HomeAccountID)
+		}
+		if account.TenantID != "" {
+			fmt.Fprintf(os.Stdout, "  tenantId: %s\n", account.TenantID)
+		}
+
+		result, err := client.AcquireTokenSilent(ctx, account)
+		if err != nil {
+			fmt.Fprintf(os.Stdout, "  静默刷新: 失败: %v\n", err)
+			continue
+		}
+		fmt.Fprintf(os.Stdout, "  静默刷新: 成功，access token 过期时间: %s\n", result.Account.ExpiresAt.Format(time.RFC3339))
+	}
+	return nil
+}
+
+// runAccount 处理 account 子命令。
+func runAccount(args []string) error {
+	if len(args) == 0 {
+		printUsage()
+		return errors.New("account 需要指定子命令: list 或 use")
+	}
+	switch args[0] {
+	case "list":
+		return runAccountList()
+	case "use":
+		return runAccountUse(args[1:])
+	default:
+		printUsage()
+		return fmt.Errorf("未知 account 子命令: %s", args[0])
+	}
+}
+
+// runAccountList 输出 accounts.json 中的可读账号档案。
+func runAccountList() error {
+	accounts, err := store.LoadAccounts()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(accounts, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化账号档案失败: %w", err)
+	}
+	fmt.Fprintln(os.Stdout, string(data))
+	return nil
+}
+
+// runAccountUse 切换默认账号。
+func runAccountUse(args []string) error {
+	if len(args) == 0 {
+		return errors.New("用法: outlookctl account use <email>")
+	}
+	target := strings.TrimSpace(args[0])
+	if target == "" {
+		return errors.New("账号邮箱不能为空")
+	}
+
+	accounts, err := store.LoadAccounts()
+	if err != nil {
+		return err
+	}
+	for i := range accounts.Accounts {
+		account := accounts.Accounts[i]
+		if strings.EqualFold(account.Username, target) || account.HomeAccountID == target {
+			accounts.DefaultAccount = account.Username
+			if err := store.SaveAccounts(accounts); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stdout, "默认账号已切换为: %s\n", account.Username)
+			return nil
+		}
+	}
+	return fmt.Errorf("找不到账号: %s", target)
+}
+
+// printUsage 输出命令行帮助。
+func printUsage() {
+	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
+
+用法:
+  outlookctl auth login              通过 Device Code 登录并保存账号
+  outlookctl auth status             验证本地 token 缓存和静默刷新
+  outlookctl account list            查看本地账号档案
+  outlookctl account use <email>     切换默认账号
+  outlookctl version                 查看版本`)
 }

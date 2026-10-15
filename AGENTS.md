@@ -19,7 +19,7 @@ Outlook Manager 是一个本地工具，通过 Microsoft Graph 官方 API 操作
 ### 3.1 技术栈
 
 - 语言：Go。
-- 认证：`github.com/AzureAD/microsoft-authentication-library-for-go`，使用 Device Code Flow。
+- 认证：直接调用 Microsoft 身份平台 OAuth2 Device Code Flow；不使用 MSAL Go，因为其对个人账号的 `offline_access` 存在已知误判。
 - Graph：`github.com/microsoftgraph/msgraph-sdk-go`，必要时直接调用 Microsoft Graph REST API。
 - MCP：`github.com/modelcontextprotocol/go-sdk`。
 - 本地加密：Windows 下使用 DPAPI，保护 token cache。
