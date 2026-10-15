@@ -260,6 +260,10 @@ func runMail(args []string) error {
 		return runMailSetRead(args[1:], false)
 	case "folders":
 		return runMailFolders(args[1:])
+	case "move":
+		return runMailMove(args[1:])
+	case "delete":
+		return runMailDelete(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -691,6 +695,112 @@ func runMailFolders(args []string) error {
 	return nil
 }
 
+// runMailMove 把邮件移动到指定文件夹。
+func runMailMove(args []string) error {
+	var account, folder, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--folder":
+			if i+1 >= len(args) {
+				return errors.New("--folder 缺少值")
+			}
+			i++
+			folder = args[i]
+		case strings.HasPrefix(arg, "--folder="):
+			folder = strings.TrimPrefix(arg, "--folder=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || folder == "" {
+		return errors.New("用法: outlookctl mail move <message-id> --folder <文件夹> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	destinationID, err := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, folder)
+	if err != nil {
+		return err
+	}
+	newMessageID, err := graph.MoveMessage(ctx, loginResult.AccessToken, messageID, destinationID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已移动\n")
+	fmt.Fprintf(os.Stdout, "原邮件 ID: %s\n", messageID)
+	fmt.Fprintf(os.Stdout, "新邮件 ID: %s\n", newMessageID)
+	return nil
+}
+
+// runMailDelete 删除邮件。
+// 当前使用 Graph 默认删除行为：邮件会被移动到已删除邮件文件夹。
+func runMailDelete(args []string) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail delete <message-id> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteMessage(ctx, loginResult.AccessToken, target.MessageID); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已删除（已移动到已删除邮件）: %s\n", target.MessageID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -707,5 +817,7 @@ func printUsage() {
   outlookctl mail mark-read <message-id>    标记邮件为已读
   outlookctl mail mark-unread <message-id>  标记邮件为未读
   outlookctl mail folders                    列出邮件文件夹
+  outlookctl mail move <message-id> --folder <文件夹>  移动邮件
+  outlookctl mail delete <message-id>        删除邮件
   outlookctl version                       查看版本`)
 }

@@ -77,6 +77,19 @@ type mailFoldersResult struct {
 	Folders []graph.MailFolder `json:"folders"`
 }
 
+// mailMoveArgs 是 mail_move tool 的输入参数。
+type mailMoveArgs struct {
+	ID      string `json:"id" jsonschema:"要移动的邮件 ID"`
+	Folder  string `json:"folder" jsonschema:"目标文件夹名称或 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDeleteArgs 是 mail_delete tool 的输入参数。
+type mailDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"要删除的邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -135,6 +148,16 @@ func main() {
 		Name:        "mail_folders_list",
 		Description: "列出邮件文件夹",
 	}, mailFoldersHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_move",
+		Description: "把邮件移动到指定文件夹",
+	}, mailMoveHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_delete",
+		Description: "删除邮件（移动到已删除邮件）",
+	}, mailDeleteHandler)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mail_mark_read",
@@ -422,6 +445,86 @@ func mailFoldersHandler(ctx context.Context, req *mcp.CallToolRequest, args mail
 	return jsonResult(mailFoldersResult{
 		Account: selected.Username,
 		Folders: folders,
+	})
+}
+
+// mailMoveHandler 把邮件移动到指定文件夹。
+func mailMoveHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMoveArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.Folder) == "" {
+		return nil, nil, fmt.Errorf("目标文件夹不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	destinationID, err := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	newMessageID, err := graph.MoveMessage(ctx, loginResult.AccessToken, args.ID, destinationID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"oldMessageId": args.ID,
+		"newMessageId": newMessageID,
+		"folder":       args.Folder,
+	})
+}
+
+// mailDeleteHandler 删除邮件。
+func mailDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteMessage(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
 	})
 }
 

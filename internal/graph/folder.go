@@ -65,3 +65,25 @@ func ListMailFolders(ctx context.Context, accessToken string, top int) ([]MailFo
 	}
 	return result.Value, nil
 }
+
+// ResolveMailFolderID 尝试把用户输入的文件夹名称或 ID 解析成 Graph 可用的 ID。
+// 常见 well-known 名称直接透传；否则按显示名查找，找不到时按 ID 交给 Graph。
+func ResolveMailFolderID(ctx context.Context, accessToken, target string) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", fmt.Errorf("目标文件夹不能为空")
+	}
+	switch strings.ToLower(target) {
+	case "inbox", "archive", "deleteditems", "drafts", "sentitems", "junkemail":
+		return target, nil
+	}
+	folders, err := ListMailFolders(ctx, accessToken, 200)
+	if err == nil {
+		for _, folder := range folders {
+			if strings.EqualFold(folder.DisplayName, target) {
+				return folder.ID, nil
+			}
+		}
+	}
+	return target, nil
+}
