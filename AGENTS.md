@@ -59,7 +59,17 @@ outlook_manager/
 - `outlookctl account list`
 - `outlookctl account use <email>`
 - `outlookctl mail list`
-- 对应的 MCP 工具封装
+- `outlookctl mail read`
+- `outlookctl mail search`
+- `outlookctl mail send`
+- `outlookctl mail mark-read`
+- `outlookctl mail mark-unread`
+- `outlookctl mail folders`
+- `outlookctl mail move`
+- `outlookctl mail delete`
+- `outlookctl mail attachments`
+- `outlookctl mail attachment-save`
+- 对应的 MCP 工具：`account_list`、`auth_status`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_move`、`mail_delete`、`mail_attachments_list`、`mail_attachment_save`
 
 ## 4. 代码编写准则
 
