@@ -104,6 +104,21 @@ type mailAttachmentSaveArgs struct {
 	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailReplyArgs 是 mail_reply / mail_reply_all tool 的输入参数。
+type mailReplyArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Body    string `json:"body" jsonschema:"回复正文"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailForwardArgs 是 mail_forward tool 的输入参数。
+type mailForwardArgs struct {
+	ID      string   `json:"id" jsonschema:"邮件 ID"`
+	To      []string `json:"to" jsonschema:"转发收件人邮箱列表"`
+	Body    string   `json:"body,omitempty" jsonschema:"转发附言"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -182,6 +197,21 @@ func main() {
 		Name:        "mail_attachment_save",
 		Description: "下载并保存邮件附件到本地文件",
 	}, mailAttachmentSaveHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_reply",
+		Description: "回复邮件",
+	}, mailReplyHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_reply_all",
+		Description: "回复全部收件人",
+	}, mailReplyAllHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_forward",
+		Description: "转发邮件",
+	}, mailForwardHandler)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mail_mark_read",
@@ -629,6 +659,96 @@ func mailAttachmentSaveHandler(ctx context.Context, req *mcp.CallToolRequest, ar
 		"attachmentId": args.AttachmentID,
 		"outputPath":   args.OutputPath,
 		"size":         size,
+	})
+}
+
+// mailReplyHandler 回复邮件。
+func mailReplyHandler(ctx context.Context, req *mcp.CallToolRequest, args mailReplyArgs) (*mcp.CallToolResult, any, error) {
+	return replyMail(ctx, args, false)
+}
+
+// mailReplyAllHandler 回复全部收件人。
+func mailReplyAllHandler(ctx context.Context, req *mcp.CallToolRequest, args mailReplyArgs) (*mcp.CallToolResult, any, error) {
+	return replyMail(ctx, args, true)
+}
+
+// replyMail 是 mail_reply / mail_reply_all 的共用实现。
+func replyMail(ctx context.Context, args mailReplyArgs, replyAll bool) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if replyAll {
+		err = graph.ReplyAllMessage(ctx, loginResult.AccessToken, args.ID, args.Body)
+	} else {
+		err = graph.ReplyMessage(ctx, loginResult.AccessToken, args.ID, args.Body)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"replyAll":  replyAll,
+	})
+}
+
+// mailForwardHandler 转发邮件。
+func mailForwardHandler(ctx context.Context, req *mcp.CallToolRequest, args mailForwardArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if len(args.To) == 0 {
+		return nil, nil, fmt.Errorf("转发邮件至少需要一个收件人")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.ForwardMessage(ctx, loginResult.AccessToken, args.ID, args.Body, args.To); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"to":        args.To,
 	})
 }
 

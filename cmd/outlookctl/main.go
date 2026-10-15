@@ -268,6 +268,12 @@ func runMail(args []string) error {
 		return runMailAttachments(args[1:])
 	case "attachment-save":
 		return runMailAttachmentSave(args[1:])
+	case "reply":
+		return runMailReply(args[1:], false)
+	case "reply-all":
+		return runMailReply(args[1:], true)
+	case "forward":
+		return runMailForward(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -938,6 +944,151 @@ func runMailAttachmentSave(args []string) error {
 	return nil
 }
 
+// runMailReply 回复或回复全部邮件。
+func runMailReply(args []string, replyAll bool) error {
+	var account, body, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--body":
+			if i+1 >= len(args) {
+				return errors.New("--body 缺少值")
+			}
+			i++
+			body = args[i]
+		case strings.HasPrefix(arg, "--body="):
+			body = strings.TrimPrefix(arg, "--body=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" {
+		return errors.New("用法: outlookctl mail reply|reply-all <message-id> --body <正文> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if replyAll {
+		err = graph.ReplyAllMessage(ctx, loginResult.AccessToken, messageID, body)
+	} else {
+		err = graph.ReplyMessage(ctx, loginResult.AccessToken, messageID, body)
+	}
+	if err != nil {
+		return err
+	}
+
+	action := "回复"
+	if replyAll {
+		action = "回复全部"
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已%s: %s\n", action, messageID)
+	return nil
+}
+
+// runMailForward 转发邮件。
+func runMailForward(args []string) error {
+	var account, body, messageID string
+	var to []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--body":
+			if i+1 >= len(args) {
+				return errors.New("--body 缺少值")
+			}
+			i++
+			body = args[i]
+		case strings.HasPrefix(arg, "--body="):
+			body = strings.TrimPrefix(arg, "--body=")
+		case arg == "--to":
+			if i+1 >= len(args) {
+				return errors.New("--to 缺少值")
+			}
+			i++
+			to = append(to, splitAddresses(args[i])...)
+		case strings.HasPrefix(arg, "--to="):
+			to = append(to, splitAddresses(strings.TrimPrefix(arg, "--to="))...)
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || len(to) == 0 {
+		return errors.New("用法: outlookctl mail forward <message-id> --to <邮箱> [--body <正文>] [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.ForwardMessage(ctx, loginResult.AccessToken, messageID, body, to); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已转发: %s\n", messageID)
+	fmt.Fprintf(os.Stdout, "收件人: %s\n", strings.Join(to, ", "))
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -958,5 +1109,8 @@ func printUsage() {
   outlookctl mail delete <message-id>        删除邮件
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
+  outlookctl mail reply <message-id> --body <正文>           回复邮件
+  outlookctl mail reply-all <message-id> --body <正文>       回复全部
+  outlookctl mail forward <message-id> --to <邮箱>          转发邮件
   outlookctl version                       查看版本`)
 }
