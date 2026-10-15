@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Config 保存可公开的认证配置。
@@ -28,7 +29,7 @@ const (
 
 // defaultScopes 是第一阶段需要的最小权限集合。
 // offline_access 用于获取 refresh token，确保登录状态可以本地持久化。
-var defaultScopes = []string{"User.Read", "Mail.Read", "offline_access"}
+var defaultScopes = []string{"User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send", "offline_access"}
 
 // DefaultConfig 返回项目默认认证配置。
 func DefaultConfig() Config {
@@ -51,6 +52,26 @@ func (c Config) Validate() error {
 		return errors.New("config.scopes 不能为空")
 	}
 	return nil
+}
+
+// ensureDefaultScopes 确保配置中包含所有默认 scope。
+// 新增能力后，老配置文件会自动补齐，避免升级后请求不到新权限。
+func ensureDefaultScopes(cfg *Config) bool {
+	changed := false
+	for _, scope := range defaultScopes {
+		found := false
+		for _, existing := range cfg.Scopes {
+			if strings.EqualFold(existing, scope) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			cfg.Scopes = append(cfg.Scopes, scope)
+			changed = true
+		}
+	}
+	return changed
 }
 
 // LoadConfig 读取本地 config.json。
@@ -78,6 +99,11 @@ func LoadConfig() (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("解析配置文件失败 (%s): %w", path, err)
+	}
+	if ensureDefaultScopes(&cfg) {
+		if err := SaveConfig(cfg); err != nil {
+			return Config{}, fmt.Errorf("更新默认 scopes 失败 (%s): %w", path, err)
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, fmt.Errorf("配置文件内容不合法 (%s): %w", path, err)

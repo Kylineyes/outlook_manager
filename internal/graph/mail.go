@@ -83,3 +83,49 @@ func ListInboxMessages(ctx context.Context, accessToken string, top int) ([]Mess
 	}
 	return result.Value, nil
 }
+
+// SearchMessages 使用 Microsoft Graph $search 在全部邮箱文件夹中搜索邮件。
+func SearchMessages(ctx context.Context, accessToken, query string, top int) ([]Message, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, fmt.Errorf("搜索关键字不能为空")
+	}
+	if top <= 0 {
+		top = 10
+	}
+	if top > 100 {
+		top = 100
+	}
+
+	values := url.Values{}
+	// Graph 要求 $search 的值是一个带引号的字符串；内部双引号需要转义。
+	escaped := strings.ReplaceAll(query, `"`, `\"`)
+	values.Set("$search", `"`+escaped+`"`)
+	values.Set("$top", strconv.Itoa(top))
+	values.Set("$select", "id,subject,receivedDateTime,isRead,webLink,bodyPreview,from")
+	endpoint := graphBaseURL + "/me/messages?" + values.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建邮件搜索请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 邮件搜索失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 邮件搜索返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var result messageListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 Graph 邮件搜索响应失败: %w", err)
+	}
+	return result.Value, nil
+}

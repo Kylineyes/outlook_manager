@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -31,6 +32,37 @@ type emptyArgs struct{}
 type mailListArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
+}
+
+// mailReadArgs 是 mail_read tool 的输入参数。
+type mailReadArgs struct {
+	ID      string `json:"id" jsonschema:"要读取的邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailSearchArgs 是 mail_search tool 的输入参数。
+type mailSearchArgs struct {
+	Query   string `json:"query" jsonschema:"搜索关键字"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
+}
+
+// mailSendArgs 是 mail_send tool 的输入参数。
+type mailSendArgs struct {
+	To              []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc              []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc             []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject         string   `json:"subject" jsonschema:"邮件主题"`
+	Body            string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML          bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	SaveToSentItems bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
+	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailMarkArgs 是 mail_mark_read / mail_mark_unread tool 的输入参数。
+type mailMarkArgs struct {
+	ID      string `json:"id" jsonschema:"要操作的邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -71,6 +103,31 @@ func main() {
 		Name:        "mail_list",
 		Description: "读取指定账号或默认账号收件箱中的最新邮件",
 	}, mailListHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_read",
+		Description: "根据邮件 ID 读取单封邮件详情",
+	}, mailReadHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_search",
+		Description: "使用关键字搜索邮件",
+	}, mailSearchHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_send",
+		Description: "发送一封邮件",
+	}, mailSendHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_mark_read",
+		Description: "把指定邮件标记为已读",
+	}, mailMarkReadHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_mark_unread",
+		Description: "把指定邮件标记为未读",
+	}, mailMarkUnreadHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -154,6 +211,169 @@ func mailListHandler(ctx context.Context, req *mcp.CallToolRequest, args mailLis
 	return jsonResult(mailListResult{
 		Account:  selected.Username,
 		Messages: messages,
+	})
+}
+
+// mailReadHandler 根据邮件 ID 读取单封邮件详情。
+func mailReadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailReadArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	detail, err := graph.GetMessage(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(detail)
+}
+
+// mailSearchHandler 使用关键字搜索邮件。
+func mailSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSearchArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Query) == "" {
+		return nil, nil, fmt.Errorf("搜索关键字不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	messages, err := graph.SearchMessages(ctx, loginResult.AccessToken, args.Query, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(mailListResult{
+		Account:  selected.Username,
+		Messages: messages,
+	})
+}
+
+// mailSendHandler 发送一封邮件。
+func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSendArgs) (*mcp.CallToolResult, any, error) {
+	if len(args.To) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个收件人")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	contentType := "Text"
+	if args.IsHTML {
+		contentType = "HTML"
+	}
+	input := graph.SendMailInput{
+		To:              args.To,
+		Cc:              args.Cc,
+		Bcc:             args.Bcc,
+		Subject:         args.Subject,
+		Body:            args.Body,
+		ContentType:     contentType,
+		SaveToSentItems: args.SaveToSentItems,
+	}
+	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"to":      args.To,
+		"subject": args.Subject,
+	})
+}
+
+// mailMarkReadHandler 把邮件标记为已读。
+func mailMarkReadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMarkArgs) (*mcp.CallToolResult, any, error) {
+	return markMessageRead(ctx, args, true)
+}
+
+// mailMarkUnreadHandler 把邮件标记为未读。
+func mailMarkUnreadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMarkArgs) (*mcp.CallToolResult, any, error) {
+	return markMessageRead(ctx, args, false)
+}
+
+// markMessageRead 是 mail_mark_read / mail_mark_unread 的共用实现。
+func markMessageRead(ctx context.Context, args mailMarkArgs, isRead bool) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetMessageRead(ctx, loginResult.AccessToken, args.ID, isRead); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"isRead":    isRead,
 	})
 }
 

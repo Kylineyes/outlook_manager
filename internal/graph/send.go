@@ -1,0 +1,121 @@
+package graph
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+// SendMailInput 是发送邮件所需的输入。
+type SendMailInput struct {
+	To              []string
+	Cc              []string
+	Bcc             []string
+	Subject         string
+	Body            string
+	ContentType     string
+	SaveToSentItems bool
+}
+
+// SendMail 使用 Microsoft Graph 发送邮件。
+//
+// Graph 的 sendMail 接口成功时通常返回 202 Accepted，响应体为空。
+func SendMail(ctx context.Context, accessToken string, input SendMailInput) error {
+	recipients, err := buildRecipients(input.To, "收件人")
+	if err != nil {
+		return err
+	}
+	if len(recipients) == 0 {
+		return fmt.Errorf("至少需要一个收件人")
+	}
+	ccRecipients, err := buildRecipients(input.Cc, "抄送")
+	if err != nil {
+		return err
+	}
+	bccRecipients, err := buildRecipients(input.Bcc, "密送")
+	if err != nil {
+		return err
+	}
+
+	contentType := strings.TrimSpace(input.ContentType)
+	if contentType == "" {
+		contentType = "Text"
+	}
+	switch strings.ToLower(contentType) {
+	case "text":
+		contentType = "Text"
+	case "html":
+		contentType = "HTML"
+	default:
+		return fmt.Errorf("不支持的正文类型: %s", input.ContentType)
+	}
+
+	message := map[string]any{
+		"subject": input.Subject,
+		"body": map[string]any{
+			"contentType": contentType,
+			"content":     input.Body,
+		},
+		"toRecipients": recipients,
+	}
+	if len(ccRecipients) > 0 {
+		message["ccRecipients"] = ccRecipients
+	}
+	if len(bccRecipients) > 0 {
+		message["bccRecipients"] = bccRecipients
+	}
+
+	payload := map[string]any{
+		"message":         message,
+		"saveToSentItems": input.SaveToSentItems,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化发送邮件请求失败: %w", err)
+	}
+
+	endpoint := graphBaseURL + "/me/sendMail"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建发送邮件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 发送邮件失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 发送邮件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// buildRecipients 把邮箱字符串列表转换为 Graph 需要的收件人结构。
+func buildRecipients(addresses []string, label string) ([]map[string]any, error) {
+	result := make([]map[string]any, 0, len(addresses))
+	for _, address := range addresses {
+		address = strings.TrimSpace(address)
+		if address == "" {
+			continue
+		}
+		if !strings.Contains(address, "@") {
+			return nil, fmt.Errorf("%s邮箱地址不合法: %s", label, address)
+		}
+		result = append(result, map[string]any{
+			"emailAddress": map[string]string{
+				"address": address,
+			},
+		})
+	}
+	return result, nil
+}

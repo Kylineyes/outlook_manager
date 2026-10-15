@@ -248,6 +248,16 @@ func runMail(args []string) error {
 	switch args[0] {
 	case "list":
 		return runMailList(args[1:])
+	case "search":
+		return runMailSearch(args[1:])
+	case "send":
+		return runMailSend(args[1:])
+	case "read":
+		return runMailRead(args[1:])
+	case "mark-read":
+		return runMailSetRead(args[1:], true)
+	case "mark-unread":
+		return runMailSetRead(args[1:], false)
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -324,6 +334,302 @@ func runMailList(args []string) error {
 	return nil
 }
 
+// runMailRead 读取单封邮件详情。
+// messageTarget 表示需要指定邮件 ID 和可选账号的命令参数。
+type messageTarget struct {
+	MessageID string
+	Account   string
+	JSON      bool
+}
+
+// parseMessageTargetArgs 手动解析邮件 ID、账号和 JSON 参数。
+// 标准库 flag 在遇到第一个非 flag 参数后会停止解析，因此这里手写解析，
+// 让 --json、--account 可以出现在邮件 ID 前后任意位置。
+func parseMessageTargetArgs(args []string, allowJSON bool) (messageTarget, error) {
+	var result messageTarget
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--json" && allowJSON:
+			result.JSON = true
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return result, errors.New("--account 缺少值")
+			}
+			i++
+			result.Account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			result.Account = strings.TrimPrefix(arg, "--account=")
+		case strings.HasPrefix(arg, "-"):
+			return result, fmt.Errorf("未知参数: %s", arg)
+		default:
+			if result.MessageID != "" {
+				return result, errors.New("只能指定一个邮件 ID")
+			}
+			result.MessageID = arg
+		}
+	}
+	if result.MessageID == "" {
+		return result, errors.New("缺少邮件 ID")
+	}
+	return result, nil
+}
+
+// runMailRead 读取单封邮件详情。
+func runMailRead(args []string) error {
+	target, err := parseMessageTargetArgs(args, true)
+	if err != nil {
+		return errors.New("用法: outlookctl mail read <message-id> [--json] [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	detail, err := graph.GetMessage(ctx, loginResult.AccessToken, target.MessageID)
+	if err != nil {
+		return err
+	}
+
+	if target.JSON {
+		data, err := json.MarshalIndent(detail, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化邮件详情失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "主题: %s\n", detail.Subject)
+	if detail.From.EmailAddress.Address != "" {
+		fmt.Fprintf(os.Stdout, "发件人: %s <%s>\n", detail.From.EmailAddress.Name, detail.From.EmailAddress.Address)
+	}
+	fmt.Fprintf(os.Stdout, "收件时间: %s\n", detail.ReceivedDateTime.Local().Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(os.Stdout, "已读: %v\n", detail.IsRead)
+	if detail.WebLink != "" {
+		fmt.Fprintf(os.Stdout, "链接: %s\n", detail.WebLink)
+	}
+	fmt.Fprintln(os.Stdout, "正文:")
+	fmt.Fprintln(os.Stdout, detail.Body.Content)
+	return nil
+}
+
+// runMailSearch 在全部邮箱文件夹中搜索邮件。
+func runMailSearch(args []string) error {
+	fs := flag.NewFlagSet("mail search", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	queryFlag := fs.String("query", "", "搜索关键字")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*queryFlag) == "" {
+		return errors.New("用法: outlookctl mail search --query <关键字>")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	messages, err := graph.SearchMessages(ctx, loginResult.AccessToken, *queryFlag, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(messages, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化搜索结果失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "搜索关键字: %s\n", *queryFlag)
+	fmt.Fprintf(os.Stdout, "结果数量: %d\n", len(messages))
+	for i, message := range messages {
+		readState := "未读"
+		if message.IsRead {
+			readState = "已读"
+		}
+		sender := message.From.EmailAddress.Address
+		if sender == "" {
+			sender = message.From.EmailAddress.Name
+		}
+		fmt.Fprintf(
+			os.Stdout,
+			"%2d. [%s] %s | %s | %s\n",
+			i+1,
+			message.ReceivedDateTime.Local().Format("2006-01-02 15:04"),
+			readState,
+			sender,
+			message.Subject,
+		)
+	}
+	return nil
+}
+
+// runMailSend 发送一封邮件。
+func runMailSend(args []string) error {
+	fs := flag.NewFlagSet("mail send", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	toFlag := fs.String("to", "", "收件人，多个地址用逗号分隔")
+	ccFlag := fs.String("cc", "", "抄送，多个地址用逗号分隔")
+	bccFlag := fs.String("bcc", "", "密送，多个地址用逗号分隔")
+	subjectFlag := fs.String("subject", "", "邮件主题")
+	bodyFlag := fs.String("body", "", "邮件正文")
+	bodyFileFlag := fs.String("body-file", "", "从文件读取邮件正文")
+	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	noSaveFlag := fs.Bool("no-save", false, "不保存到已发送邮件")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	to := splitAddresses(*toFlag)
+	if len(to) == 0 {
+		return errors.New("用法: outlookctl mail send --to <邮箱> --subject <主题> --body <正文>")
+	}
+
+	body := *bodyFlag
+	if strings.TrimSpace(*bodyFileFlag) != "" {
+		data, err := os.ReadFile(*bodyFileFlag)
+		if err != nil {
+			return fmt.Errorf("读取正文文件失败: %w", err)
+		}
+		body = string(data)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+
+	contentType := "Text"
+	if *htmlFlag {
+		contentType = "HTML"
+	}
+	input := graph.SendMailInput{
+		To:              to,
+		Cc:              splitAddresses(*ccFlag),
+		Bcc:             splitAddresses(*bccFlag),
+		Subject:         *subjectFlag,
+		Body:            body,
+		ContentType:     contentType,
+		SaveToSentItems: !*noSaveFlag,
+	}
+	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已发送\n")
+	fmt.Fprintf(os.Stdout, "收件人: %s\n", strings.Join(to, ", "))
+	fmt.Fprintf(os.Stdout, "主题: %s\n", *subjectFlag)
+	return nil
+}
+
+// splitAddresses 按英文逗号拆分多个邮箱地址，并去掉空白。
+func splitAddresses(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+// runMailSetRead 修改单封邮件的已读状态。
+func runMailSetRead(args []string, isRead bool) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail mark-read|mark-unread <message-id> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SetMessageRead(ctx, loginResult.AccessToken, target.MessageID, isRead); err != nil {
+		return err
+	}
+
+	state := "已读"
+	if !isRead {
+		state = "未读"
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已标记为%s: %s\n", state, target.MessageID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -334,5 +640,10 @@ func printUsage() {
   outlookctl account list                  查看本地账号档案
   outlookctl account use <email>           切换默认账号
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
+  outlookctl mail search --query <关键字>       搜索邮件
+  outlookctl mail send --to <邮箱> ...          发送邮件
+  outlookctl mail read <message-id>         读取单封邮件详情
+  outlookctl mail mark-read <message-id>    标记邮件为已读
+  outlookctl mail mark-unread <message-id>  标记邮件为未读
   outlookctl version                       查看版本`)
 }
