@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -86,4 +87,111 @@ func ResolveMailFolderID(ctx context.Context, accessToken, target string) (strin
 		}
 	}
 	return target, nil
+}
+
+// CreateMailFolder 创建一个邮件文件夹。
+// parentID 为空时创建在根目录下，否则创建在指定父文件夹下。
+func CreateMailFolder(ctx context.Context, accessToken, displayName, parentID string) (*MailFolder, error) {
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return nil, fmt.Errorf("文件夹名称不能为空")
+	}
+
+	payload, err := json.Marshal(map[string]string{"displayName": displayName})
+	if err != nil {
+		return nil, fmt.Errorf("序列化创建文件夹请求失败: %w", err)
+	}
+
+	endpoint := graphBaseURL + "/me/mailFolders"
+	if strings.TrimSpace(parentID) != "" {
+		endpoint = graphBaseURL + "/me/mailFolders/" + url.PathEscape(parentID) + "/childFolders"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("创建文件夹请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 创建文件夹失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 创建文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var folder MailFolder
+	if err := json.NewDecoder(resp.Body).Decode(&folder); err != nil {
+		return nil, fmt.Errorf("解析创建文件夹响应失败: %w", err)
+	}
+	return &folder, nil
+}
+
+// RenameMailFolder 重命名邮件文件夹。
+func RenameMailFolder(ctx context.Context, accessToken, folderID, displayName string) error {
+	folderID = strings.TrimSpace(folderID)
+	displayName = strings.TrimSpace(displayName)
+	if folderID == "" {
+		return fmt.Errorf("文件夹 ID 不能为空")
+	}
+	if displayName == "" {
+		return fmt.Errorf("文件夹名称不能为空")
+	}
+
+	payload, err := json.Marshal(map[string]string{"displayName": displayName})
+	if err != nil {
+		return fmt.Errorf("序列化重命名文件夹请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("创建重命名文件夹请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 重命名文件夹失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 重命名文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// DeleteMailFolder 删除邮件文件夹。
+func DeleteMailFolder(ctx context.Context, accessToken, folderID string) error {
+	folderID = strings.TrimSpace(folderID)
+	if folderID == "" {
+		return fmt.Errorf("文件夹 ID 不能为空")
+	}
+
+	endpoint := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建删除文件夹请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 删除文件夹失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 删除文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }

@@ -280,6 +280,12 @@ func runMail(args []string) error {
 		return runMailDrafts(args[1:])
 	case "draft-send":
 		return runMailDraftSend(args[1:])
+	case "folder-create":
+		return runMailFolderCreate(args[1:])
+	case "folder-rename":
+		return runMailFolderRename(args[1:])
+	case "folder-delete":
+		return runMailFolderDelete(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -1244,6 +1250,148 @@ func runMailDraftSend(args []string) error {
 	return nil
 }
 
+// runMailFolderCreate 创建邮件文件夹。
+func runMailFolderCreate(args []string) error {
+	fs := flag.NewFlagSet("mail folder-create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	nameFlag := fs.String("name", "", "文件夹名称")
+	parentFlag := fs.String("parent", "", "父文件夹 ID，默认创建在根目录")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl mail folder-create --name <名称> [--parent <父文件夹ID>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folder, err := graph.CreateMailFolder(ctx, loginResult.AccessToken, *nameFlag, *parentFlag)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "文件夹已创建: %s\n", folder.DisplayName)
+	fmt.Fprintf(os.Stdout, "文件夹 ID: %s\n", folder.ID)
+	return nil
+}
+
+// runMailFolderRename 重命名邮件文件夹。
+func runMailFolderRename(args []string) error {
+	var account, name, folderID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--name":
+			if i+1 >= len(args) {
+				return errors.New("--name 缺少值")
+			}
+			i++
+			name = args[i]
+		case strings.HasPrefix(arg, "--name="):
+			name = strings.TrimPrefix(arg, "--name=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if folderID != "" {
+				return errors.New("只能指定一个文件夹 ID")
+			}
+			folderID = arg
+		}
+	}
+	if folderID == "" || strings.TrimSpace(name) == "" {
+		return errors.New("用法: outlookctl mail folder-rename <文件夹ID> --name <新名称> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.RenameMailFolder(ctx, loginResult.AccessToken, folderID, name); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "文件夹已重命名为: %s\n", name)
+	return nil
+}
+
+// runMailFolderDelete 删除邮件文件夹。
+func runMailFolderDelete(args []string) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail folder-delete <文件夹ID> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteMailFolder(ctx, loginResult.AccessToken, target.MessageID); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "文件夹已删除: %s\n", target.MessageID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -1270,5 +1418,8 @@ func printUsage() {
   outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>  创建草稿
   outlookctl mail drafts                     列出草稿
   outlookctl mail draft-send <draft-id>      发送草稿
+  outlookctl mail folder-create --name <名称>  创建文件夹
+  outlookctl mail folder-rename <id> --name <名称>  重命名文件夹
+  outlookctl mail folder-delete <id>         删除文件夹
   outlookctl version                       查看版本`)
 }
