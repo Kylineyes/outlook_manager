@@ -248,6 +248,8 @@ func runMail(args []string) error {
 	switch args[0] {
 	case "list":
 		return runMailList(args[1:])
+	case "search":
+		return runMailSearch(args[1:])
 	case "read":
 		return runMailRead(args[1:])
 	default:
@@ -388,6 +390,79 @@ func runMailRead(args []string) error {
 	return nil
 }
 
+// runMailSearch 在全部邮箱文件夹中搜索邮件。
+func runMailSearch(args []string) error {
+	fs := flag.NewFlagSet("mail search", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	queryFlag := fs.String("query", "", "搜索关键字")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*queryFlag) == "" {
+		return errors.New("用法: outlookctl mail search --query <关键字>")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	messages, err := graph.SearchMessages(ctx, loginResult.AccessToken, *queryFlag, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(messages, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化搜索结果失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "搜索关键字: %s\n", *queryFlag)
+	fmt.Fprintf(os.Stdout, "结果数量: %d\n", len(messages))
+	for i, message := range messages {
+		readState := "未读"
+		if message.IsRead {
+			readState = "已读"
+		}
+		sender := message.From.EmailAddress.Address
+		if sender == "" {
+			sender = message.From.EmailAddress.Name
+		}
+		fmt.Fprintf(
+			os.Stdout,
+			"%2d. [%s] %s | %s | %s\n",
+			i+1,
+			message.ReceivedDateTime.Local().Format("2006-01-02 15:04"),
+			readState,
+			sender,
+			message.Subject,
+		)
+	}
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -398,6 +473,7 @@ func printUsage() {
   outlookctl account list                  查看本地账号档案
   outlookctl account use <email>           切换默认账号
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
+  outlookctl mail search --query <关键字>       搜索邮件
   outlookctl mail read <message-id>         读取单封邮件详情
   outlookctl version                       查看版本`)
 }

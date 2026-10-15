@@ -40,6 +40,13 @@ type mailReadArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailSearchArgs 是 mail_search tool 的输入参数。
+type mailSearchArgs struct {
+	Query   string `json:"query" jsonschema:"搜索关键字"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -83,6 +90,11 @@ func main() {
 		Name:        "mail_read",
 		Description: "根据邮件 ID 读取单封邮件详情",
 	}, mailReadHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_search",
+		Description: "使用关键字搜索邮件",
+	}, mailSearchHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -199,6 +211,41 @@ func mailReadHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRea
 		return nil, nil, err
 	}
 	return jsonResult(detail)
+}
+
+// mailSearchHandler 使用关键字搜索邮件。
+func mailSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSearchArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Query) == "" {
+		return nil, nil, fmt.Errorf("搜索关键字不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	messages, err := graph.SearchMessages(ctx, loginResult.AccessToken, args.Query, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(mailListResult{
+		Account:  selected.Username,
+		Messages: messages,
+	})
 }
 
 // jsonResult 把任意结构序列化成缩进 JSON，并包装成 MCP 文本结果。
