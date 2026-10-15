@@ -276,7 +276,7 @@ func runMailList(args []string) error {
 	if err != nil {
 		return err
 	}
-	selected, err := selectAccount(accounts, *accountFlag)
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
 	if err != nil {
 		return err
 	}
@@ -322,32 +322,6 @@ func runMailList(args []string) error {
 		)
 	}
 	return nil
-}
-
-// selectAccount 根据用户输入或默认账号选择要操作的账号。
-func selectAccount(accounts []auth.Account, target string) (auth.Account, error) {
-	if len(accounts) == 0 {
-		return auth.Account{}, errors.New("本地没有已登录账号，请先运行 outlookctl auth login")
-	}
-
-	if target != "" {
-		for _, account := range accounts {
-			if strings.EqualFold(account.Username, target) || account.HomeAccountID == target {
-				return account, nil
-			}
-		}
-		return auth.Account{}, fmt.Errorf("找不到账号: %s", target)
-	}
-
-	accountsFile, err := store.LoadAccounts()
-	if err == nil && accountsFile.DefaultAccount != "" {
-		for _, account := range accounts {
-			if strings.EqualFold(account.Username, accountsFile.DefaultAccount) {
-				return account, nil
-			}
-		}
-	}
-	return accounts[0], nil
 }
 
 // printUsage 输出命令行帮助。
