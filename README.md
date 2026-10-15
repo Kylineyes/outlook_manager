@@ -12,12 +12,18 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 单封邮件详情
 - 邮件搜索
 - 发送邮件
+- 回复、回复全部、转发
 - 标记已读 / 未读
+- 设置 / 取消旗标
+- 设置重要性
 - 邮件文件夹列表
+- 邮件文件夹创建、重命名、删除
 - 邮件移动
 - 邮件删除（移动到已删除邮件）
 - 邮件附件列表
 - 邮件附件下载
+- 草稿创建、列表、发送
+- 邮件列表、搜索、详情、附件对应的 MCP tools
 
 ## 环境要求
 
@@ -70,7 +76,19 @@ outlookctl mail folders
 outlookctl mail move <message-id> --folder 存档
 outlookctl mail delete <message-id>
 outlookctl mail attachments <message-id>
-outlookctl mail attachment-save <message-id> --attachment <attachment-id> --out C:\temp\file.pdf
+outlookctl mail attachment-save <message-id> --attachment <attachment-id> --out C:\temp\file.pdf
+outlookctl mail reply <message-id> --body "回复内容"
+outlookctl mail reply-all <message-id> --body "回复内容"
+outlookctl mail forward <message-id> --to someone@example.com --body "转发内容"
+outlookctl mail draft-create --to someone@example.com --subject "主题" --body "正文"
+outlookctl mail drafts
+outlookctl mail draft-send <draft-id>
+outlookctl mail folder-create --name "新文件夹"
+outlookctl mail folder-rename <folder-id> --name "新名称"
+outlookctl mail folder-delete <folder-id>
+outlookctl mail flag <message-id>
+outlookctl mail unflag <message-id>
+outlookctl mail importance <message-id> --level high
 ```
 
 ## MCP
@@ -90,6 +108,18 @@ outlookctl mail attachment-save <message-id> --attachment <attachment-id> --out 
 - `mail_delete`
 - `mail_attachments_list`
 - `mail_attachment_save`
+- `mail_reply`
+- `mail_reply_all`
+- `mail_forward`
+- `mail_draft_create`
+- `mail_drafts_list`
+- `mail_draft_send`
+- `mail_folder_create`
+- `mail_folder_rename`
+- `mail_folder_delete`
+- `mail_flag`
+- `mail_unflag`
+- `mail_set_importance`
 
 ## 本地数据
 
