@@ -250,6 +250,8 @@ func runMail(args []string) error {
 		return runMailList(args[1:])
 	case "search":
 		return runMailSearch(args[1:])
+	case "send":
+		return runMailSend(args[1:])
 	case "read":
 		return runMailRead(args[1:])
 	default:
@@ -463,6 +465,94 @@ func runMailSearch(args []string) error {
 	return nil
 }
 
+// runMailSend 发送一封邮件。
+func runMailSend(args []string) error {
+	fs := flag.NewFlagSet("mail send", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	toFlag := fs.String("to", "", "收件人，多个地址用逗号分隔")
+	ccFlag := fs.String("cc", "", "抄送，多个地址用逗号分隔")
+	bccFlag := fs.String("bcc", "", "密送，多个地址用逗号分隔")
+	subjectFlag := fs.String("subject", "", "邮件主题")
+	bodyFlag := fs.String("body", "", "邮件正文")
+	bodyFileFlag := fs.String("body-file", "", "从文件读取邮件正文")
+	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	noSaveFlag := fs.Bool("no-save", false, "不保存到已发送邮件")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	to := splitAddresses(*toFlag)
+	if len(to) == 0 {
+		return errors.New("用法: outlookctl mail send --to <邮箱> --subject <主题> --body <正文>")
+	}
+
+	body := *bodyFlag
+	if strings.TrimSpace(*bodyFileFlag) != "" {
+		data, err := os.ReadFile(*bodyFileFlag)
+		if err != nil {
+			return fmt.Errorf("读取正文文件失败: %w", err)
+		}
+		body = string(data)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+
+	contentType := "Text"
+	if *htmlFlag {
+		contentType = "HTML"
+	}
+	input := graph.SendMailInput{
+		To:              to,
+		Cc:              splitAddresses(*ccFlag),
+		Bcc:             splitAddresses(*bccFlag),
+		Subject:         *subjectFlag,
+		Body:            body,
+		ContentType:     contentType,
+		SaveToSentItems: !*noSaveFlag,
+	}
+	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已发送\n")
+	fmt.Fprintf(os.Stdout, "收件人: %s\n", strings.Join(to, ", "))
+	fmt.Fprintf(os.Stdout, "主题: %s\n", *subjectFlag)
+	return nil
+}
+
+// splitAddresses 按英文逗号拆分多个邮箱地址，并去掉空白。
+func splitAddresses(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -474,6 +564,7 @@ func printUsage() {
   outlookctl account use <email>           切换默认账号
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail search --query <关键字>       搜索邮件
+  outlookctl mail send --to <邮箱> ...          发送邮件
   outlookctl mail read <message-id>         读取单封邮件详情
   outlookctl version                       查看版本`)
 }

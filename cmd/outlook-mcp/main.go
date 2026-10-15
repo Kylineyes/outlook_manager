@@ -47,6 +47,18 @@ type mailSearchArgs struct {
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
 }
 
+// mailSendArgs 是 mail_send tool 的输入参数。
+type mailSendArgs struct {
+	To              []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc              []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc             []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject         string   `json:"subject" jsonschema:"邮件主题"`
+	Body            string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML          bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	SaveToSentItems bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
+	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -95,6 +107,11 @@ func main() {
 		Name:        "mail_search",
 		Description: "使用关键字搜索邮件",
 	}, mailSearchHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_send",
+		Description: "发送一封邮件",
+	}, mailSendHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -245,6 +262,56 @@ func mailSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args mailS
 	return jsonResult(mailListResult{
 		Account:  selected.Username,
 		Messages: messages,
+	})
+}
+
+// mailSendHandler 发送一封邮件。
+func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSendArgs) (*mcp.CallToolResult, any, error) {
+	if len(args.To) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个收件人")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	contentType := "Text"
+	if args.IsHTML {
+		contentType = "HTML"
+	}
+	input := graph.SendMailInput{
+		To:              args.To,
+		Cc:              args.Cc,
+		Bcc:             args.Bcc,
+		Subject:         args.Subject,
+		Body:            args.Body,
+		ContentType:     contentType,
+		SaveToSentItems: args.SaveToSentItems,
+	}
+	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"to":      args.To,
+		"subject": args.Subject,
 	})
 }
 
