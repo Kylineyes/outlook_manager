@@ -90,6 +90,20 @@ type mailDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailAttachmentsArgs 是 mail_attachments_list tool 的输入参数。
+type mailAttachmentsArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailAttachmentSaveArgs 是 mail_attachment_save tool 的输入参数。
+type mailAttachmentSaveArgs struct {
+	ID           string `json:"id" jsonschema:"邮件 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"附件 ID"`
+	OutputPath   string `json:"outputPath" jsonschema:"保存到本地的完整路径"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -158,6 +172,16 @@ func main() {
 		Name:        "mail_delete",
 		Description: "删除邮件（移动到已删除邮件）",
 	}, mailDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_attachments_list",
+		Description: "列出邮件附件",
+	}, mailAttachmentsHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_attachment_save",
+		Description: "下载并保存邮件附件到本地文件",
+	}, mailAttachmentSaveHandler)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mail_mark_read",
@@ -525,6 +549,86 @@ func mailDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailD
 		"success":   true,
 		"account":   selected.Username,
 		"messageId": args.ID,
+	})
+}
+
+// mailAttachmentsHandler 列出指定邮件的附件。
+func mailAttachmentsHandler(ctx context.Context, req *mcp.CallToolRequest, args mailAttachmentsArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachments, err := graph.ListAttachments(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account":     selected.Username,
+		"attachments": attachments,
+	})
+}
+
+// mailAttachmentSaveHandler 下载并保存指定附件。
+func mailAttachmentSaveHandler(ctx context.Context, req *mcp.CallToolRequest, args mailAttachmentSaveArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.AttachmentID) == "" {
+		return nil, nil, fmt.Errorf("附件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.OutputPath) == "" {
+		return nil, nil, fmt.Errorf("输出路径不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	size, err := graph.SaveAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID, args.OutputPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"messageId":    args.ID,
+		"attachmentId": args.AttachmentID,
+		"outputPath":   args.OutputPath,
+		"size":         size,
 	})
 }
 

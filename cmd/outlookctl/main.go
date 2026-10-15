@@ -264,6 +264,10 @@ func runMail(args []string) error {
 		return runMailMove(args[1:])
 	case "delete":
 		return runMailDelete(args[1:])
+	case "attachments":
+		return runMailAttachments(args[1:])
+	case "attachment-save":
+		return runMailAttachmentSave(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -801,6 +805,139 @@ func runMailDelete(args []string) error {
 	return nil
 }
 
+// runMailAttachments 列出指定邮件的附件。
+func runMailAttachments(args []string) error {
+	target, err := parseMessageTargetArgs(args, true)
+	if err != nil {
+		return errors.New("用法: outlookctl mail attachments <message-id> [--json] [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachments, err := graph.ListAttachments(ctx, loginResult.AccessToken, target.MessageID)
+	if err != nil {
+		return err
+	}
+
+	if target.JSON {
+		data, err := json.MarshalIndent(attachments, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化附件列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "附件数量: %d\n", len(attachments))
+	for _, attachment := range attachments {
+		inline := "否"
+		if attachment.IsInline {
+			inline = "是"
+		}
+		fmt.Fprintf(
+			os.Stdout,
+			"- %s | id=%s | 类型=%s | 大小=%d | 内嵌=%s\n",
+			attachment.Name,
+			attachment.ID,
+			attachment.ContentType,
+			attachment.Size,
+			inline,
+		)
+	}
+	return nil
+}
+
+// runMailAttachmentSave 下载并保存指定附件。
+func runMailAttachmentSave(args []string) error {
+	var account, attachmentID, outputPath, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--attachment":
+			if i+1 >= len(args) {
+				return errors.New("--attachment 缺少值")
+			}
+			i++
+			attachmentID = args[i]
+		case strings.HasPrefix(arg, "--attachment="):
+			attachmentID = strings.TrimPrefix(arg, "--attachment=")
+		case arg == "--out":
+			if i+1 >= len(args) {
+				return errors.New("--out 缺少值")
+			}
+			i++
+			outputPath = args[i]
+		case strings.HasPrefix(arg, "--out="):
+			outputPath = strings.TrimPrefix(arg, "--out=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || attachmentID == "" || outputPath == "" {
+		return errors.New("用法: outlookctl mail attachment-save <message-id> --attachment <id> --out <path> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	size, err := graph.SaveAttachment(ctx, loginResult.AccessToken, messageID, attachmentID, outputPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "附件已保存: %s\n", outputPath)
+	fmt.Fprintf(os.Stdout, "大小: %d 字节\n", size)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -819,5 +956,7 @@ func printUsage() {
   outlookctl mail folders                    列出邮件文件夹
   outlookctl mail move <message-id> --folder <文件夹>  移动邮件
   outlookctl mail delete <message-id>        删除邮件
+  outlookctl mail attachments <message-id>   列出邮件附件
+  outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
   outlookctl version                       查看版本`)
 }
