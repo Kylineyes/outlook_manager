@@ -1,6 +1,6 @@
 // Package main 是 outlook-mcp MCP server 的入口。
 //
-// 当前阶段只实现最小可执行骨架，用于验证 Windows x86 构建流水线。
+// 当前阶段只实现最小可执行骨架，用于验证 Windows amd64 构建流水线。
 // 后续会在这里初始化 MCP server，并把 internal/graph 中的能力注册成 tools。
 package main
 

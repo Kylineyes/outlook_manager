@@ -1,4 +1,4 @@
-name: 发布 Windows x86 可执行文件
+name: 发布 Windows amd64 可执行文件
 
 # 触发条件：推送以 v 开头的标签，例如 v0.1.0。
 # 工作流会先校验标签是否位于 main 分支的提交历史中，避免误发布未合并代码。
@@ -42,9 +42,9 @@ jobs:
         shell: bash
         run: echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
-  # 第二个任务：分别构建 CLI 和 MCP 两个 Windows x86 可执行文件。
+  # 第二个任务：分别构建 CLI 和 MCP 两个 Windows amd64 可执行文件。
   build:
-    name: 构建 Windows x86 可执行文件
+    name: 构建 Windows amd64 可执行文件
     needs: verify-tag
     runs-on: windows-latest
     strategy:
@@ -69,20 +69,20 @@ jobs:
       - name: 构建 ${{ matrix.binary.name }}
         shell: pwsh
         env:
-          # 严格按需求构建 Windows x86，即 32 位 Intel 架构。
+          # 构建 Windows 64 位可执行文件；Go 对应的 GOARCH 名称是 amd64。
           GOOS: windows
-          GOARCH: '386'
+          GOARCH: 'amd64'
           # 关闭 cgo，确保生成不依赖本地 C 运行库的单文件可执行程序。
           CGO_ENABLED: '0'
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          go build -trimpath -ldflags "-s -w -X main.version=${{ needs.verify-tag.outputs.tag }}" -o "dist/${{ matrix.binary.name }}-windows-x86.exe" "${{ matrix.binary.path }}"
+          go build -trimpath -ldflags "-s -w -X main.version=${{ needs.verify-tag.outputs.tag }}" -o "dist/${{ matrix.binary.name }}-windows-amd64.exe" "${{ matrix.binary.path }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary.name }}-windows-x86
-          path: dist/${{ matrix.binary.name }}-windows-x86.exe
+          name: ${{ matrix.binary.name }}-windows-amd64
+          path: dist/${{ matrix.binary.name }}-windows-amd64.exe
           if-no-files-found: error
 
   # 第三个任务：把所有可执行文件挂到同一个 GitHub Release 下。

@@ -12,7 +12,7 @@ Outlook Manager 是一个本地工具，通过 Microsoft Graph 官方 API 操作
 - 支持个人 Outlook.com 多账号登录、切换和本地加密持久化。
 - 提供 CLI 与 MCP 双入口，并共享同一套核心逻辑。
 - 第一阶段覆盖邮件能力，后续扩展到日历、联系人等能力。
-- 在 main 分支打 tag 后，自动发布 Windows x86 可执行文件。
+- 在 main 分支打 tag 后，自动发布 Windows amd64（64 位）可执行文件。
 
 ## 3. 当前工程建设构想
 
@@ -94,7 +94,7 @@ outlook_manager/
 feat: 新增 Outlook 账号 Device Code 登录
 fix: 修复 token 缓存解密失败的问题
 docs: 补充 AGENTS.md 项目说明
-ci: 添加 main 标签触发 Windows x86 构建
+ci: 添加 main 标签触发 Windows amd64 构建
 ```
 
 ## 6. 分支与合并流程
@@ -114,11 +114,11 @@ ci: 添加 main 标签触发 Windows x86 构建
 
 ## 7. GitHub Actions 发布规则
 
-- 工作流文件位于 `.github/workflows/release-windows-x86.yml`。
+- 工作流文件位于 `.github/workflows/release-windows-amd64.yml`。
 - 触发条件：在 `main` 分支上打 `v*` 标签并推送。
 - 工作流会先校验标签提交是否属于 `main` 分支。
-- 构建目标：`GOOS=windows`、`GOARCH=386`、`CGO_ENABLED=0`。
+- 构建目标：`GOOS=windows`、`GOARCH=amd64`、`CGO_ENABLED=0`。
 - 默认构建两个可执行文件：
-  - `outlookctl-windows-x86.exe`
-  - `outlook-mcp-windows-x86.exe`
+  - `outlookctl-windows-amd64.exe`
+  - `outlook-mcp-windows-amd64.exe`
 - 构建完成后自动创建或更新 GitHub Release，并上传可执行文件。
