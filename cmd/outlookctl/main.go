@@ -1,16 +1,18 @@
 // Package main 是 outlookctl 命令行工具的入口。
 //
-// 当前阶段实现认证与账号管理的最小闭环：
+// 当前阶段实现认证、账号管理和邮件读取的最小闭环：
 //   - auth login：通过 Device Code 登录并加密保存 token。
 //   - auth status：验证本地 token 缓存是否可以静默刷新。
 //   - account list：查看可读账号档案，便于人工确认。
 //   - account use：切换默认账号。
+//   - mail list：读取当前账号收件箱最新邮件。
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -45,6 +47,8 @@ func run(args []string) error {
 		return runAuth(args[1:])
 	case "account":
 		return runAccount(args[1:])
+	case "mail":
+		return runMail(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(os.Stdout, "outlookctl %s\n", version)
 		return nil
@@ -235,14 +239,126 @@ func runAccountUse(args []string) error {
 	return fmt.Errorf("找不到账号: %s", target)
 }
 
+// runMail 处理 mail 子命令。
+func runMail(args []string) error {
+	if len(args) == 0 {
+		printUsage()
+		return errors.New("mail 需要指定子命令: list")
+	}
+	switch args[0] {
+	case "list":
+		return runMailList(args[1:])
+	default:
+		printUsage()
+		return fmt.Errorf("未知 mail 子命令: %s", args[0])
+	}
+}
+
+// runMailList 读取当前账号收件箱最新邮件。
+func runMailList(args []string) error {
+	fs := flag.NewFlagSet("mail list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := selectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+
+	// 先静默刷新一次，确保 access token 可用，并顺带验证 refresh token。
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	messages, err := graph.ListInboxMessages(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(messages, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化邮件列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "收件箱最新 %d 封邮件:\n", len(messages))
+	for i, message := range messages {
+		readState := "未读"
+		if message.IsRead {
+			readState = "已读"
+		}
+		sender := message.From.EmailAddress.Address
+		if sender == "" {
+			sender = message.From.EmailAddress.Name
+		}
+		fmt.Fprintf(
+			os.Stdout,
+			"%2d. [%s] %s | %s | %s\n",
+			i+1,
+			message.ReceivedDateTime.Local().Format("2006-01-02 15:04"),
+			readState,
+			sender,
+			message.Subject,
+		)
+	}
+	return nil
+}
+
+// selectAccount 根据用户输入或默认账号选择要操作的账号。
+func selectAccount(accounts []auth.Account, target string) (auth.Account, error) {
+	if len(accounts) == 0 {
+		return auth.Account{}, errors.New("本地没有已登录账号，请先运行 outlookctl auth login")
+	}
+
+	if target != "" {
+		for _, account := range accounts {
+			if strings.EqualFold(account.Username, target) || account.HomeAccountID == target {
+				return account, nil
+			}
+		}
+		return auth.Account{}, fmt.Errorf("找不到账号: %s", target)
+	}
+
+	accountsFile, err := store.LoadAccounts()
+	if err == nil && accountsFile.DefaultAccount != "" {
+		for _, account := range accounts {
+			if strings.EqualFold(account.Username, accountsFile.DefaultAccount) {
+				return account, nil
+			}
+		}
+	}
+	return accounts[0], nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
 
 用法:
-  outlookctl auth login              通过 Device Code 登录并保存账号
-  outlookctl auth status             验证本地 token 缓存和静默刷新
-  outlookctl account list            查看本地账号档案
-  outlookctl account use <email>     切换默认账号
-  outlookctl version                 查看版本`)
+  outlookctl auth login                    通过 Device Code 登录并保存账号
+  outlookctl auth status                   验证本地 token 缓存和静默刷新
+  outlookctl account list                  查看本地账号档案
+  outlookctl account use <email>           切换默认账号
+  outlookctl mail list [--account <email>] 读取收件箱最新邮件
+  outlookctl version                       查看版本`)
 }
