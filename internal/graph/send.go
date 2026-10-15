@@ -21,24 +21,22 @@ type SendMailInput struct {
 	SaveToSentItems bool
 }
 
-// SendMail 使用 Microsoft Graph 发送邮件。
-//
-// Graph 的 sendMail 接口成功时通常返回 202 Accepted，响应体为空。
-func SendMail(ctx context.Context, accessToken string, input SendMailInput) error {
+// buildMessage 把发送参数转换为 Microsoft Graph 邮件资源结构。
+func buildMessage(input SendMailInput) (map[string]any, error) {
 	recipients, err := buildRecipients(input.To, "收件人")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(recipients) == 0 {
-		return fmt.Errorf("至少需要一个收件人")
+		return nil, fmt.Errorf("至少需要一个收件人")
 	}
 	ccRecipients, err := buildRecipients(input.Cc, "抄送")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	bccRecipients, err := buildRecipients(input.Bcc, "密送")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	contentType := strings.TrimSpace(input.ContentType)
@@ -51,7 +49,7 @@ func SendMail(ctx context.Context, accessToken string, input SendMailInput) erro
 	case "html":
 		contentType = "HTML"
 	default:
-		return fmt.Errorf("不支持的正文类型: %s", input.ContentType)
+		return nil, fmt.Errorf("不支持的正文类型: %s", input.ContentType)
 	}
 
 	message := map[string]any{
@@ -68,7 +66,17 @@ func SendMail(ctx context.Context, accessToken string, input SendMailInput) erro
 	if len(bccRecipients) > 0 {
 		message["bccRecipients"] = bccRecipients
 	}
+	return message, nil
+}
 
+// SendMail 使用 Microsoft Graph 发送邮件。
+//
+// Graph 的 sendMail 接口成功时通常返回 202 Accepted，响应体为空。
+func SendMail(ctx context.Context, accessToken string, input SendMailInput) error {
+	message, err := buildMessage(input)
+	if err != nil {
+		return err
+	}
 	payload := map[string]any{
 		"message":         message,
 		"saveToSentItems": input.SaveToSentItems,

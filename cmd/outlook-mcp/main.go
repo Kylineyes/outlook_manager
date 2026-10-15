@@ -119,6 +119,29 @@ type mailForwardArgs struct {
 	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailDraftCreateArgs 是 mail_draft_create tool 的输入参数。
+type mailDraftCreateArgs struct {
+	To      []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc      []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc     []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject string   `json:"subject" jsonschema:"邮件主题"`
+	Body    string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML  bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftsArgs 是 mail_drafts_list tool 的输入参数。
+type mailDraftsArgs struct {
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封草稿，默认 10，最大 100"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftSendArgs 是 mail_draft_send tool 的输入参数。
+type mailDraftSendArgs struct {
+	ID      string `json:"id" jsonschema:"草稿 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -212,6 +235,21 @@ func main() {
 		Name:        "mail_forward",
 		Description: "转发邮件",
 	}, mailForwardHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_draft_create",
+		Description: "创建草稿邮件",
+	}, mailDraftCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_drafts_list",
+		Description: "列出草稿邮件",
+	}, mailDraftsHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_draft_send",
+		Description: "发送草稿邮件",
+	}, mailDraftSendHandler)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mail_mark_read",
@@ -749,6 +787,119 @@ func mailForwardHandler(ctx context.Context, req *mcp.CallToolRequest, args mail
 		"account":   selected.Username,
 		"messageId": args.ID,
 		"to":        args.To,
+	})
+}
+
+// mailDraftCreateHandler 创建草稿邮件。
+func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftCreateArgs) (*mcp.CallToolResult, any, error) {
+	if len(args.To) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个收件人")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	contentType := "Text"
+	if args.IsHTML {
+		contentType = "HTML"
+	}
+	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, graph.SendMailInput{
+		To:          args.To,
+		Cc:          args.Cc,
+		Bcc:         args.Bcc,
+		Subject:     args.Subject,
+		Body:        args.Body,
+		ContentType: contentType,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"draftId": draftID,
+	})
+}
+
+// mailDraftsHandler 列出草稿邮件。
+func mailDraftsHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftsArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	drafts, err := graph.ListDrafts(ctx, loginResult.AccessToken, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(mailListResult{
+		Account:  selected.Username,
+		Messages: drafts,
+	})
+}
+
+// mailDraftSendHandler 发送草稿邮件。
+func mailDraftSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftSendArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("草稿 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SendDraft(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"draftId": args.ID,
 	})
 }
 

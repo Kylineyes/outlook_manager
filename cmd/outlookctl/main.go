@@ -274,6 +274,12 @@ func runMail(args []string) error {
 		return runMailReply(args[1:], true)
 	case "forward":
 		return runMailForward(args[1:])
+	case "draft-create":
+		return runMailDraftCreate(args[1:])
+	case "drafts":
+		return runMailDrafts(args[1:])
+	case "draft-send":
+		return runMailDraftSend(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -1089,6 +1095,155 @@ func runMailForward(args []string) error {
 	return nil
 }
 
+// runMailDraftCreate 创建一封草稿邮件。
+func runMailDraftCreate(args []string) error {
+	fs := flag.NewFlagSet("mail draft-create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	toFlag := fs.String("to", "", "收件人，多个地址用逗号分隔")
+	ccFlag := fs.String("cc", "", "抄送，多个地址用逗号分隔")
+	bccFlag := fs.String("bcc", "", "密送，多个地址用逗号分隔")
+	subjectFlag := fs.String("subject", "", "邮件主题")
+	bodyFlag := fs.String("body", "", "邮件正文")
+	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	to := splitAddresses(*toFlag)
+	if len(to) == 0 {
+		return errors.New("用法: outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+
+	contentType := "Text"
+	if *htmlFlag {
+		contentType = "HTML"
+	}
+	input := graph.SendMailInput{
+		To:          to,
+		Cc:          splitAddresses(*ccFlag),
+		Bcc:         splitAddresses(*bccFlag),
+		Subject:     *subjectFlag,
+		Body:        *bodyFlag,
+		ContentType: contentType,
+	}
+	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, input)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿已创建: %s\n", draftID)
+	return nil
+}
+
+// runMailDrafts 列出草稿箱中的邮件。
+func runMailDrafts(args []string) error {
+	fs := flag.NewFlagSet("mail drafts", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 10, "最多返回多少封草稿，范围 1-100")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	drafts, err := graph.ListDrafts(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(drafts, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化草稿列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿数量: %d\n", len(drafts))
+	for i, draft := range drafts {
+		fmt.Fprintf(os.Stdout, "%2d. [%s] %s\n", i+1, draft.ReceivedDateTime.Local().Format("2006-01-02 15:04"), draft.Subject)
+	}
+	return nil
+}
+
+// runMailDraftSend 发送指定草稿。
+func runMailDraftSend(args []string) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail draft-send <draft-id> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SendDraft(ctx, loginResult.AccessToken, target.MessageID); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿已发送: %s\n", target.MessageID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -1112,5 +1267,8 @@ func printUsage() {
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件
+  outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>  创建草稿
+  outlookctl mail drafts                     列出草稿
+  outlookctl mail draft-send <draft-id>      发送草稿
   outlookctl version                       查看版本`)
 }
