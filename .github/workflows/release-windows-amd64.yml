@@ -1,0 +1,107 @@
+name: 发布 Windows amd64 可执行文件
+
+# 触发条件：推送以 v 开头的标签，例如 v0.1.0。
+# 工作流会先校验标签是否位于 main 分支的提交历史中，避免误发布未合并代码。
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 创建 GitHub Release 需要写入 contents 权限。
+permissions:
+  contents: write
+
+jobs:
+  # 第一个任务：确认标签提交属于 main 分支。
+  # GitHub Actions 的 tag 事件本身不区分分支，因此这里显式校验。
+  verify-tag:
+    name: 校验标签是否位于 main 分支
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: 检出完整提交历史
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 校验标签提交是否属于 main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          if git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
+            echo "标签提交属于 main 分支，可以继续发布。"
+          else
+            echo "::error::标签 $GITHUB_REF_NAME 指向的提交不在 main 分支上，终止发布。"
+            exit 1
+          fi
+
+      - name: 输出标签名
+        id: tag
+        shell: bash
+        run: echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+  # 第二个任务：分别构建 CLI 和 MCP 两个 Windows amd64 可执行文件。
+  build:
+    name: 构建 Windows amd64 可执行文件
+    needs: verify-tag
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        binary:
+          - name: outlookctl
+            path: ./cmd/outlookctl
+          - name: outlook-mcp
+            path: ./cmd/outlook-mcp
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          # 依赖缓存需要 go.sum。项目初始化完成后再改为 true。
+          cache: false
+
+      - name: 构建 ${{ matrix.binary.name }}
+        shell: pwsh
+        env:
+          # 构建 Windows 64 位可执行文件；Go 对应的 GOARCH 名称是 amd64。
+          GOOS: windows
+          GOARCH: 'amd64'
+          # 关闭 cgo，确保生成不依赖本地 C 运行库的单文件可执行程序。
+          CGO_ENABLED: '0'
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          go build -trimpath -ldflags "-s -w -X main.version=${{ needs.verify-tag.outputs.tag }}" -o "dist/${{ matrix.binary.name }}-windows-amd64.exe" "${{ matrix.binary.path }}"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary.name }}-windows-amd64
+          path: dist/${{ matrix.binary.name }}-windows-amd64.exe
+          if-no-files-found: error
+
+  # 第三个任务：把所有可执行文件挂到同一个 GitHub Release 下。
+  release:
+    name: 创建 GitHub Release
+    needs:
+      - verify-tag
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 发布 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.verify-tag.outputs.tag }}
+          files: dist/*.exe
+          generate_release_notes: true
