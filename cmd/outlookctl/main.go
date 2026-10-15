@@ -258,6 +258,8 @@ func runMail(args []string) error {
 		return runMailSetRead(args[1:], true)
 	case "mark-unread":
 		return runMailSetRead(args[1:], false)
+	case "folders":
+		return runMailFolders(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -630,6 +632,65 @@ func runMailSetRead(args []string, isRead bool) error {
 	return nil
 }
 
+// runMailFolders 列出当前账号的邮件文件夹。
+func runMailFolders(args []string) error {
+	fs := flag.NewFlagSet("mail folders", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 50, "最多返回多少个文件夹，范围 1-200")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folders, err := graph.ListMailFolders(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(folders, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化邮件文件夹失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件文件夹数量: %d\n", len(folders))
+	for _, folder := range folders {
+		fmt.Fprintf(
+			os.Stdout,
+			"- %s | id=%s | 未读=%d | 总数=%d\n",
+			folder.DisplayName,
+			folder.ID,
+			folder.UnreadItemCount,
+			folder.TotalItemCount,
+		)
+	}
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -645,5 +706,6 @@ func printUsage() {
   outlookctl mail read <message-id>         读取单封邮件详情
   outlookctl mail mark-read <message-id>    标记邮件为已读
   outlookctl mail mark-unread <message-id>  标记邮件为未读
+  outlookctl mail folders                    列出邮件文件夹
   outlookctl version                       查看版本`)
 }

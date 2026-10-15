@@ -65,6 +65,18 @@ type mailMarkArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailFoldersArgs 是 mail_folders_list tool 的输入参数。
+type mailFoldersArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个文件夹，默认 50，最大 200"`
+}
+
+// mailFoldersResult 是 mail_folders_list tool 的返回结构。
+type mailFoldersResult struct {
+	Account string             `json:"account"`
+	Folders []graph.MailFolder `json:"folders"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -118,6 +130,11 @@ func main() {
 		Name:        "mail_send",
 		Description: "发送一封邮件",
 	}, mailSendHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_folders_list",
+		Description: "列出邮件文件夹",
+	}, mailFoldersHandler)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mail_mark_read",
@@ -374,6 +391,37 @@ func markMessageRead(ctx context.Context, args mailMarkArgs, isRead bool) (*mcp.
 		"account":   selected.Username,
 		"messageId": args.ID,
 		"isRead":    isRead,
+	})
+}
+
+// mailFoldersHandler 列出邮件文件夹。
+func mailFoldersHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFoldersArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folders, err := graph.ListMailFolders(ctx, loginResult.AccessToken, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(mailFoldersResult{
+		Account: selected.Username,
+		Folders: folders,
 	})
 }
 
