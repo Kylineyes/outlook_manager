@@ -1,0 +1,130 @@
+# Outlook Manager
+
+Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号的本地工具，同时提供 CLI 和 MCP 两种入口。
+
+## 功能
+
+当前已实现：
+
+- Device Code 登录与 token 加密持久化
+- 多账号账号档案与默认账号切换
+- 收件箱邮件列表
+- 单封邮件详情
+- 邮件搜索
+- 发送邮件
+- 标记已读 / 未读
+- 邮件文件夹列表
+- 邮件移动
+- 邮件删除（移动到已删除邮件）
+- 邮件附件列表
+- 邮件附件下载
+
+## 环境要求
+
+- Windows
+- Go 1.27 或更高版本
+
+## 构建
+
+```powershell
+go build -o outlookctl.exe ./cmd/outlookctl
+go build -o outlook-mcp.exe ./cmd/outlook-mcp
+```
+
+Windows amd64 交叉编译：
+
+```powershell
+$env:GOOS='windows'
+$env:GOARCH='amd64'
+$env:CGO_ENABLED='0'
+go build -trimpath -ldflags '-s -w' -o outlookctl.exe ./cmd/outlookctl
+go build -trimpath -ldflags '-s -w' -o outlook-mcp.exe ./cmd/outlook-mcp
+```
+
+## CLI 使用
+
+登录：
+
+```powershell
+outlookctl auth login
+```
+
+查看账号与 token 状态：
+
+```powershell
+outlookctl auth status
+outlookctl account list
+outlookctl account use zero-67@hotmail.com
+```
+
+邮件操作：
+
+```powershell
+outlookctl mail list --top 10
+outlookctl mail read <message-id>
+outlookctl mail search --query "关键字"
+outlookctl mail send --to someone@example.com --subject "主题" --body "正文"
+outlookctl mail mark-read <message-id>
+outlookctl mail mark-unread <message-id>
+outlookctl mail folders
+outlookctl mail move <message-id> --folder 存档
+outlookctl mail delete <message-id>
+outlookctl mail attachments <message-id>
+outlookctl mail attachment-save <message-id> --attachment <attachment-id> --out C:\temp\file.pdf
+```
+
+## MCP
+
+`outlook-mcp` 通过 stdio 提供以下 tools：
+
+- `account_list`
+- `auth_status`
+- `mail_list`
+- `mail_read`
+- `mail_search`
+- `mail_send`
+- `mail_mark_read`
+- `mail_mark_unread`
+- `mail_folders_list`
+- `mail_move`
+- `mail_delete`
+- `mail_attachments_list`
+- `mail_attachment_save`
+
+## 本地数据
+
+默认数据目录：
+
+```text
+%USERPROFILE%\.outlook-manager\
+```
+
+文件说明：
+
+- `config.json`：公开认证配置，不保存秘密
+- `accounts.json`：可读账号档案，不保存 token
+- `token-cache.bin`：DPAPI 加密后的 access token 和 refresh token
+- `logs\auth.log`：预留的认证日志位置
+
+## 开发
+
+提交规范：
+
+- Conventional Commits
+- 描述使用简体中文
+
+分支流程：
+
+- `feat/*`、`fix/*`、`docs/*`、`test/*` 从 `dev` 创建
+- 测试通过后合入 `dev`
+- `main` 只接受用户将 `dev` 合并进来
+
+提交前检查：
+
+```powershell
+gofmt -w <changed-go-files>
+go vet ./...
+go test ./...
+```
+
+更多工程约定见 `AGENTS.md`。
