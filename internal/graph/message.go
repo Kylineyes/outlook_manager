@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -73,4 +74,36 @@ func GetMessage(ctx context.Context, accessToken, messageID string) (*MessageDet
 		return nil, fmt.Errorf("解析 Graph 邮件详情失败: %w", err)
 	}
 	return &detail, nil
+}
+
+// SetMessageRead 修改单封邮件的已读状态。
+func SetMessageRead(ctx context.Context, accessToken, messageID string, isRead bool) error {
+	if strings.TrimSpace(messageID) == "" {
+		return fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	payload, err := json.Marshal(map[string]bool{"isRead": isRead})
+	if err != nil {
+		return fmt.Errorf("序列化邮件更新请求失败: %w", err)
+	}
+
+	endpoint := graphBaseURL + "/me/messages/" + url.PathEscape(messageID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("创建邮件更新请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 更新邮件状态失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 更新邮件状态返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }
