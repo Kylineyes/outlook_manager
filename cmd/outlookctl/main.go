@@ -292,6 +292,12 @@ func runMail(args []string) error {
 		return runMailSetFlag(args[1:], false)
 	case "importance":
 		return runMailSetImportance(args[1:])
+	case "message-categories":
+		return runMailMessageCategories(args[1:])
+	case "category-add":
+		return runMailCategoryAdd(args[1:])
+	case "category-remove":
+		return runMailCategoryRemove(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -1500,6 +1506,138 @@ func runMailSetImportance(args []string) error {
 	return nil
 }
 
+// runMailMessageCategories 列出单封邮件的类别。
+func runMailMessageCategories(args []string) error {
+	target, err := parseMessageTargetArgs(args, true)
+	if err != nil {
+		return errors.New("用法: outlookctl mail message-categories <message-id> [--json] [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	categories, err := graph.GetMessageCategories(ctx, loginResult.AccessToken, target.MessageID)
+	if err != nil {
+		return err
+	}
+
+	if target.JSON {
+		data, err := json.MarshalIndent(categories, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化邮件类别失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件类别数量: %d\n", len(categories))
+	for _, category := range categories {
+		fmt.Fprintf(os.Stdout, "- %s\n", category)
+	}
+	return nil
+}
+
+// runMailCategoryAdd 给邮件添加类别。
+func runMailCategoryAdd(args []string) error {
+	return runMailCategoryChange(args, true)
+}
+
+// runMailCategoryRemove 从邮件移除类别。
+func runMailCategoryRemove(args []string) error {
+	return runMailCategoryChange(args, false)
+}
+
+// runMailCategoryChange 是添加或移除邮件类别的共用实现。
+func runMailCategoryChange(args []string, add bool) error {
+	var account, category, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--category":
+			if i+1 >= len(args) {
+				return errors.New("--category 缺少值")
+			}
+			i++
+			category = args[i]
+		case strings.HasPrefix(arg, "--category="):
+			category = strings.TrimPrefix(arg, "--category=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || strings.TrimSpace(category) == "" {
+		return errors.New("用法: outlookctl mail category-add|category-remove <message-id> --category <名称> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	var categories []string
+	if add {
+		categories, err = graph.AddMessageCategory(ctx, loginResult.AccessToken, messageID, category)
+	} else {
+		categories, err = graph.RemoveMessageCategory(ctx, loginResult.AccessToken, messageID, category)
+	}
+	if err != nil {
+		return err
+	}
+
+	action := "已添加类别"
+	if !add {
+		action = "已移除类别"
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件%s %s: %s\n", action, category, messageID)
+	fmt.Fprintf(os.Stdout, "当前类别: %s\n", strings.Join(categories, ", "))
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -1532,5 +1670,8 @@ func printUsage() {
   outlookctl mail flag <message-id>         设置邮件旗标
   outlookctl mail unflag <message-id>       取消邮件旗标
   outlookctl mail importance <message-id> --level low|normal|high  设置重要性
+  outlookctl mail message-categories <id>    列出邮件类别
+  outlookctl mail category-add <id> --category <名称>  添加类别
+  outlookctl mail category-remove <id> --category <名称>  移除类别
   outlookctl version                       查看版本`)
 }
