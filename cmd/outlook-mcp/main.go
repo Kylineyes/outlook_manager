@@ -65,6 +65,116 @@ type mailMarkArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailFoldersArgs 是 mail_folders_list tool 的输入参数。
+type mailFoldersArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个文件夹，默认 50，最大 200"`
+}
+
+// mailFoldersResult 是 mail_folders_list tool 的返回结构。
+type mailFoldersResult struct {
+	Account string             `json:"account"`
+	Folders []graph.MailFolder `json:"folders"`
+}
+
+// mailMoveArgs 是 mail_move tool 的输入参数。
+type mailMoveArgs struct {
+	ID      string `json:"id" jsonschema:"要移动的邮件 ID"`
+	Folder  string `json:"folder" jsonschema:"目标文件夹名称或 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDeleteArgs 是 mail_delete tool 的输入参数。
+type mailDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"要删除的邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailAttachmentsArgs 是 mail_attachments_list tool 的输入参数。
+type mailAttachmentsArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailAttachmentSaveArgs 是 mail_attachment_save tool 的输入参数。
+type mailAttachmentSaveArgs struct {
+	ID           string `json:"id" jsonschema:"邮件 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"附件 ID"`
+	OutputPath   string `json:"outputPath" jsonschema:"保存到本地的完整路径"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailReplyArgs 是 mail_reply / mail_reply_all tool 的输入参数。
+type mailReplyArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Body    string `json:"body" jsonschema:"回复正文"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailForwardArgs 是 mail_forward tool 的输入参数。
+type mailForwardArgs struct {
+	ID      string   `json:"id" jsonschema:"邮件 ID"`
+	To      []string `json:"to" jsonschema:"转发收件人邮箱列表"`
+	Body    string   `json:"body,omitempty" jsonschema:"转发附言"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftCreateArgs 是 mail_draft_create tool 的输入参数。
+type mailDraftCreateArgs struct {
+	To      []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc      []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc     []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject string   `json:"subject" jsonschema:"邮件主题"`
+	Body    string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML  bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftsArgs 是 mail_drafts_list tool 的输入参数。
+type mailDraftsArgs struct {
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封草稿，默认 10，最大 100"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftSendArgs 是 mail_draft_send tool 的输入参数。
+type mailDraftSendArgs struct {
+	ID      string `json:"id" jsonschema:"草稿 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailFolderCreateArgs 是 mail_folder_create tool 的输入参数。
+type mailFolderCreateArgs struct {
+	Name    string `json:"name" jsonschema:"文件夹名称"`
+	Parent  string `json:"parent,omitempty" jsonschema:"父文件夹 ID；不填时创建在根目录"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailFolderRenameArgs 是 mail_folder_rename tool 的输入参数。
+type mailFolderRenameArgs struct {
+	ID      string `json:"id" jsonschema:"文件夹 ID"`
+	Name    string `json:"name" jsonschema:"新的文件夹名称"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailFolderDeleteArgs 是 mail_folder_delete tool 的输入参数。
+type mailFolderDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"文件夹 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailFlagArgs 是 mail_flag / mail_unflag tool 的输入参数。
+type mailFlagArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailImportanceArgs 是 mail_set_importance tool 的输入参数。
+type mailImportanceArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Level   string `json:"level" jsonschema:"重要性：low、normal 或 high"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -118,6 +228,91 @@ func main() {
 		Name:        "mail_send",
 		Description: "发送一封邮件",
 	}, mailSendHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_folders_list",
+		Description: "列出邮件文件夹",
+	}, mailFoldersHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_folder_create",
+		Description: "创建邮件文件夹",
+	}, mailFolderCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_folder_rename",
+		Description: "重命名邮件文件夹",
+	}, mailFolderRenameHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_folder_delete",
+		Description: "删除邮件文件夹",
+	}, mailFolderDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_flag",
+		Description: "设置邮件旗标",
+	}, mailFlagHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_unflag",
+		Description: "取消邮件旗标",
+	}, mailUnflagHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_set_importance",
+		Description: "设置邮件重要性",
+	}, mailImportanceHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_move",
+		Description: "把邮件移动到指定文件夹",
+	}, mailMoveHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_delete",
+		Description: "删除邮件（移动到已删除邮件）",
+	}, mailDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_attachments_list",
+		Description: "列出邮件附件",
+	}, mailAttachmentsHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_attachment_save",
+		Description: "下载并保存邮件附件到本地文件",
+	}, mailAttachmentSaveHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_reply",
+		Description: "回复邮件",
+	}, mailReplyHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_reply_all",
+		Description: "回复全部收件人",
+	}, mailReplyAllHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_forward",
+		Description: "转发邮件",
+	}, mailForwardHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_draft_create",
+		Description: "创建草稿邮件",
+	}, mailDraftCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_drafts_list",
+		Description: "列出草稿邮件",
+	}, mailDraftsHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_draft_send",
+		Description: "发送草稿邮件",
+	}, mailDraftSendHandler)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mail_mark_read",
@@ -374,6 +569,595 @@ func markMessageRead(ctx context.Context, args mailMarkArgs, isRead bool) (*mcp.
 		"account":   selected.Username,
 		"messageId": args.ID,
 		"isRead":    isRead,
+	})
+}
+
+// mailFoldersHandler 列出邮件文件夹。
+func mailFoldersHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFoldersArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folders, err := graph.ListMailFolders(ctx, loginResult.AccessToken, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(mailFoldersResult{
+		Account: selected.Username,
+		Folders: folders,
+	})
+}
+
+// mailMoveHandler 把邮件移动到指定文件夹。
+func mailMoveHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMoveArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.Folder) == "" {
+		return nil, nil, fmt.Errorf("目标文件夹不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	destinationID, err := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	newMessageID, err := graph.MoveMessage(ctx, loginResult.AccessToken, args.ID, destinationID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"oldMessageId": args.ID,
+		"newMessageId": newMessageID,
+		"folder":       args.Folder,
+	})
+}
+
+// mailDeleteHandler 删除邮件。
+func mailDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteMessage(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+	})
+}
+
+// mailAttachmentsHandler 列出指定邮件的附件。
+func mailAttachmentsHandler(ctx context.Context, req *mcp.CallToolRequest, args mailAttachmentsArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachments, err := graph.ListAttachments(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account":     selected.Username,
+		"attachments": attachments,
+	})
+}
+
+// mailAttachmentSaveHandler 下载并保存指定附件。
+func mailAttachmentSaveHandler(ctx context.Context, req *mcp.CallToolRequest, args mailAttachmentSaveArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.AttachmentID) == "" {
+		return nil, nil, fmt.Errorf("附件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.OutputPath) == "" {
+		return nil, nil, fmt.Errorf("输出路径不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	size, err := graph.SaveAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID, args.OutputPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"messageId":    args.ID,
+		"attachmentId": args.AttachmentID,
+		"outputPath":   args.OutputPath,
+		"size":         size,
+	})
+}
+
+// mailReplyHandler 回复邮件。
+func mailReplyHandler(ctx context.Context, req *mcp.CallToolRequest, args mailReplyArgs) (*mcp.CallToolResult, any, error) {
+	return replyMail(ctx, args, false)
+}
+
+// mailReplyAllHandler 回复全部收件人。
+func mailReplyAllHandler(ctx context.Context, req *mcp.CallToolRequest, args mailReplyArgs) (*mcp.CallToolResult, any, error) {
+	return replyMail(ctx, args, true)
+}
+
+// replyMail 是 mail_reply / mail_reply_all 的共用实现。
+func replyMail(ctx context.Context, args mailReplyArgs, replyAll bool) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if replyAll {
+		err = graph.ReplyAllMessage(ctx, loginResult.AccessToken, args.ID, args.Body)
+	} else {
+		err = graph.ReplyMessage(ctx, loginResult.AccessToken, args.ID, args.Body)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"replyAll":  replyAll,
+	})
+}
+
+// mailForwardHandler 转发邮件。
+func mailForwardHandler(ctx context.Context, req *mcp.CallToolRequest, args mailForwardArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if len(args.To) == 0 {
+		return nil, nil, fmt.Errorf("转发邮件至少需要一个收件人")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.ForwardMessage(ctx, loginResult.AccessToken, args.ID, args.Body, args.To); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"to":        args.To,
+	})
+}
+
+// mailDraftCreateHandler 创建草稿邮件。
+func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftCreateArgs) (*mcp.CallToolResult, any, error) {
+	if len(args.To) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个收件人")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	contentType := "Text"
+	if args.IsHTML {
+		contentType = "HTML"
+	}
+	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, graph.SendMailInput{
+		To:          args.To,
+		Cc:          args.Cc,
+		Bcc:         args.Bcc,
+		Subject:     args.Subject,
+		Body:        args.Body,
+		ContentType: contentType,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"draftId": draftID,
+	})
+}
+
+// mailDraftsHandler 列出草稿邮件。
+func mailDraftsHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftsArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	drafts, err := graph.ListDrafts(ctx, loginResult.AccessToken, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(mailListResult{
+		Account:  selected.Username,
+		Messages: drafts,
+	})
+}
+
+// mailDraftSendHandler 发送草稿邮件。
+func mailDraftSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftSendArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("草稿 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SendDraft(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"draftId": args.ID,
+	})
+}
+
+// mailFolderCreateHandler 创建邮件文件夹。
+func mailFolderCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFolderCreateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("文件夹名称不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folder, err := graph.CreateMailFolder(ctx, loginResult.AccessToken, args.Name, args.Parent)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"folder":  folder,
+	})
+}
+
+// mailFolderRenameHandler 重命名邮件文件夹。
+func mailFolderRenameHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFolderRenameArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("文件夹 ID 不能为空")
+	}
+	if strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("文件夹名称不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.RenameMailFolder(ctx, loginResult.AccessToken, args.ID, args.Name); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"folderId": args.ID,
+		"newName":  args.Name,
+	})
+}
+
+// mailFolderDeleteHandler 删除邮件文件夹。
+func mailFolderDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFolderDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("文件夹 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteMailFolder(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"folderId": args.ID,
+	})
+}
+
+// mailFlagHandler 设置邮件旗标。
+func mailFlagHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFlagArgs) (*mcp.CallToolResult, any, error) {
+	return setMessageFlag(ctx, args, true)
+}
+
+// mailUnflagHandler 取消邮件旗标。
+func mailUnflagHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFlagArgs) (*mcp.CallToolResult, any, error) {
+	return setMessageFlag(ctx, args, false)
+}
+
+// setMessageFlag 是 mail_flag / mail_unflag 的共用实现。
+func setMessageFlag(ctx context.Context, args mailFlagArgs, flagged bool) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetMessageFlag(ctx, loginResult.AccessToken, args.ID, flagged); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"flagged":   flagged,
+	})
+}
+
+// mailImportanceHandler 设置邮件重要性。
+func mailImportanceHandler(ctx context.Context, req *mcp.CallToolRequest, args mailImportanceArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	if strings.TrimSpace(args.Level) == "" {
+		return nil, nil, fmt.Errorf("重要性不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetMessageImportance(ctx, loginResult.AccessToken, args.ID, args.Level); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
+		"level":     args.Level,
 	})
 }
 

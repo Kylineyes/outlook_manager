@@ -258,6 +258,40 @@ func runMail(args []string) error {
 		return runMailSetRead(args[1:], true)
 	case "mark-unread":
 		return runMailSetRead(args[1:], false)
+	case "folders":
+		return runMailFolders(args[1:])
+	case "move":
+		return runMailMove(args[1:])
+	case "delete":
+		return runMailDelete(args[1:])
+	case "attachments":
+		return runMailAttachments(args[1:])
+	case "attachment-save":
+		return runMailAttachmentSave(args[1:])
+	case "reply":
+		return runMailReply(args[1:], false)
+	case "reply-all":
+		return runMailReply(args[1:], true)
+	case "forward":
+		return runMailForward(args[1:])
+	case "draft-create":
+		return runMailDraftCreate(args[1:])
+	case "drafts":
+		return runMailDrafts(args[1:])
+	case "draft-send":
+		return runMailDraftSend(args[1:])
+	case "folder-create":
+		return runMailFolderCreate(args[1:])
+	case "folder-rename":
+		return runMailFolderRename(args[1:])
+	case "folder-delete":
+		return runMailFolderDelete(args[1:])
+	case "flag":
+		return runMailSetFlag(args[1:], true)
+	case "unflag":
+		return runMailSetFlag(args[1:], false)
+	case "importance":
+		return runMailSetImportance(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -630,6 +664,842 @@ func runMailSetRead(args []string, isRead bool) error {
 	return nil
 }
 
+// runMailFolders 列出当前账号的邮件文件夹。
+func runMailFolders(args []string) error {
+	fs := flag.NewFlagSet("mail folders", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 50, "最多返回多少个文件夹，范围 1-200")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folders, err := graph.ListMailFolders(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(folders, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化邮件文件夹失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件文件夹数量: %d\n", len(folders))
+	for _, folder := range folders {
+		fmt.Fprintf(
+			os.Stdout,
+			"- %s | id=%s | 未读=%d | 总数=%d\n",
+			folder.DisplayName,
+			folder.ID,
+			folder.UnreadItemCount,
+			folder.TotalItemCount,
+		)
+	}
+	return nil
+}
+
+// runMailMove 把邮件移动到指定文件夹。
+func runMailMove(args []string) error {
+	var account, folder, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--folder":
+			if i+1 >= len(args) {
+				return errors.New("--folder 缺少值")
+			}
+			i++
+			folder = args[i]
+		case strings.HasPrefix(arg, "--folder="):
+			folder = strings.TrimPrefix(arg, "--folder=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || folder == "" {
+		return errors.New("用法: outlookctl mail move <message-id> --folder <文件夹> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	destinationID, err := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, folder)
+	if err != nil {
+		return err
+	}
+	newMessageID, err := graph.MoveMessage(ctx, loginResult.AccessToken, messageID, destinationID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已移动\n")
+	fmt.Fprintf(os.Stdout, "原邮件 ID: %s\n", messageID)
+	fmt.Fprintf(os.Stdout, "新邮件 ID: %s\n", newMessageID)
+	return nil
+}
+
+// runMailDelete 删除邮件。
+// 当前使用 Graph 默认删除行为：邮件会被移动到已删除邮件文件夹。
+func runMailDelete(args []string) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail delete <message-id> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteMessage(ctx, loginResult.AccessToken, target.MessageID); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已删除（已移动到已删除邮件）: %s\n", target.MessageID)
+	return nil
+}
+
+// runMailAttachments 列出指定邮件的附件。
+func runMailAttachments(args []string) error {
+	target, err := parseMessageTargetArgs(args, true)
+	if err != nil {
+		return errors.New("用法: outlookctl mail attachments <message-id> [--json] [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachments, err := graph.ListAttachments(ctx, loginResult.AccessToken, target.MessageID)
+	if err != nil {
+		return err
+	}
+
+	if target.JSON {
+		data, err := json.MarshalIndent(attachments, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化附件列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "附件数量: %d\n", len(attachments))
+	for _, attachment := range attachments {
+		inline := "否"
+		if attachment.IsInline {
+			inline = "是"
+		}
+		fmt.Fprintf(
+			os.Stdout,
+			"- %s | id=%s | 类型=%s | 大小=%d | 内嵌=%s\n",
+			attachment.Name,
+			attachment.ID,
+			attachment.ContentType,
+			attachment.Size,
+			inline,
+		)
+	}
+	return nil
+}
+
+// runMailAttachmentSave 下载并保存指定附件。
+func runMailAttachmentSave(args []string) error {
+	var account, attachmentID, outputPath, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--attachment":
+			if i+1 >= len(args) {
+				return errors.New("--attachment 缺少值")
+			}
+			i++
+			attachmentID = args[i]
+		case strings.HasPrefix(arg, "--attachment="):
+			attachmentID = strings.TrimPrefix(arg, "--attachment=")
+		case arg == "--out":
+			if i+1 >= len(args) {
+				return errors.New("--out 缺少值")
+			}
+			i++
+			outputPath = args[i]
+		case strings.HasPrefix(arg, "--out="):
+			outputPath = strings.TrimPrefix(arg, "--out=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || attachmentID == "" || outputPath == "" {
+		return errors.New("用法: outlookctl mail attachment-save <message-id> --attachment <id> --out <path> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	size, err := graph.SaveAttachment(ctx, loginResult.AccessToken, messageID, attachmentID, outputPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "附件已保存: %s\n", outputPath)
+	fmt.Fprintf(os.Stdout, "大小: %d 字节\n", size)
+	return nil
+}
+
+// runMailReply 回复或回复全部邮件。
+func runMailReply(args []string, replyAll bool) error {
+	var account, body, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--body":
+			if i+1 >= len(args) {
+				return errors.New("--body 缺少值")
+			}
+			i++
+			body = args[i]
+		case strings.HasPrefix(arg, "--body="):
+			body = strings.TrimPrefix(arg, "--body=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" {
+		return errors.New("用法: outlookctl mail reply|reply-all <message-id> --body <正文> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if replyAll {
+		err = graph.ReplyAllMessage(ctx, loginResult.AccessToken, messageID, body)
+	} else {
+		err = graph.ReplyMessage(ctx, loginResult.AccessToken, messageID, body)
+	}
+	if err != nil {
+		return err
+	}
+
+	action := "回复"
+	if replyAll {
+		action = "回复全部"
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已%s: %s\n", action, messageID)
+	return nil
+}
+
+// runMailForward 转发邮件。
+func runMailForward(args []string) error {
+	var account, body, messageID string
+	var to []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--body":
+			if i+1 >= len(args) {
+				return errors.New("--body 缺少值")
+			}
+			i++
+			body = args[i]
+		case strings.HasPrefix(arg, "--body="):
+			body = strings.TrimPrefix(arg, "--body=")
+		case arg == "--to":
+			if i+1 >= len(args) {
+				return errors.New("--to 缺少值")
+			}
+			i++
+			to = append(to, splitAddresses(args[i])...)
+		case strings.HasPrefix(arg, "--to="):
+			to = append(to, splitAddresses(strings.TrimPrefix(arg, "--to="))...)
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || len(to) == 0 {
+		return errors.New("用法: outlookctl mail forward <message-id> --to <邮箱> [--body <正文>] [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.ForwardMessage(ctx, loginResult.AccessToken, messageID, body, to); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已转发: %s\n", messageID)
+	fmt.Fprintf(os.Stdout, "收件人: %s\n", strings.Join(to, ", "))
+	return nil
+}
+
+// runMailDraftCreate 创建一封草稿邮件。
+func runMailDraftCreate(args []string) error {
+	fs := flag.NewFlagSet("mail draft-create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	toFlag := fs.String("to", "", "收件人，多个地址用逗号分隔")
+	ccFlag := fs.String("cc", "", "抄送，多个地址用逗号分隔")
+	bccFlag := fs.String("bcc", "", "密送，多个地址用逗号分隔")
+	subjectFlag := fs.String("subject", "", "邮件主题")
+	bodyFlag := fs.String("body", "", "邮件正文")
+	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	to := splitAddresses(*toFlag)
+	if len(to) == 0 {
+		return errors.New("用法: outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+
+	contentType := "Text"
+	if *htmlFlag {
+		contentType = "HTML"
+	}
+	input := graph.SendMailInput{
+		To:          to,
+		Cc:          splitAddresses(*ccFlag),
+		Bcc:         splitAddresses(*bccFlag),
+		Subject:     *subjectFlag,
+		Body:        *bodyFlag,
+		ContentType: contentType,
+	}
+	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, input)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿已创建: %s\n", draftID)
+	return nil
+}
+
+// runMailDrafts 列出草稿箱中的邮件。
+func runMailDrafts(args []string) error {
+	fs := flag.NewFlagSet("mail drafts", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 10, "最多返回多少封草稿，范围 1-100")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	drafts, err := graph.ListDrafts(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(drafts, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化草稿列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿数量: %d\n", len(drafts))
+	for i, draft := range drafts {
+		fmt.Fprintf(os.Stdout, "%2d. [%s] %s\n", i+1, draft.ReceivedDateTime.Local().Format("2006-01-02 15:04"), draft.Subject)
+	}
+	return nil
+}
+
+// runMailDraftSend 发送指定草稿。
+func runMailDraftSend(args []string) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail draft-send <draft-id> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SendDraft(ctx, loginResult.AccessToken, target.MessageID); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿已发送: %s\n", target.MessageID)
+	return nil
+}
+
+// runMailFolderCreate 创建邮件文件夹。
+func runMailFolderCreate(args []string) error {
+	fs := flag.NewFlagSet("mail folder-create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	nameFlag := fs.String("name", "", "文件夹名称")
+	parentFlag := fs.String("parent", "", "父文件夹 ID，默认创建在根目录")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl mail folder-create --name <名称> [--parent <父文件夹ID>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folder, err := graph.CreateMailFolder(ctx, loginResult.AccessToken, *nameFlag, *parentFlag)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "文件夹已创建: %s\n", folder.DisplayName)
+	fmt.Fprintf(os.Stdout, "文件夹 ID: %s\n", folder.ID)
+	return nil
+}
+
+// runMailFolderRename 重命名邮件文件夹。
+func runMailFolderRename(args []string) error {
+	var account, name, folderID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--name":
+			if i+1 >= len(args) {
+				return errors.New("--name 缺少值")
+			}
+			i++
+			name = args[i]
+		case strings.HasPrefix(arg, "--name="):
+			name = strings.TrimPrefix(arg, "--name=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if folderID != "" {
+				return errors.New("只能指定一个文件夹 ID")
+			}
+			folderID = arg
+		}
+	}
+	if folderID == "" || strings.TrimSpace(name) == "" {
+		return errors.New("用法: outlookctl mail folder-rename <文件夹ID> --name <新名称> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.RenameMailFolder(ctx, loginResult.AccessToken, folderID, name); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "文件夹已重命名为: %s\n", name)
+	return nil
+}
+
+// runMailFolderDelete 删除邮件文件夹。
+func runMailFolderDelete(args []string) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail folder-delete <文件夹ID> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteMailFolder(ctx, loginResult.AccessToken, target.MessageID); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "文件夹已删除: %s\n", target.MessageID)
+	return nil
+}
+
+// runMailSetFlag 设置或取消邮件旗标。
+func runMailSetFlag(args []string, flagged bool) error {
+	target, err := parseMessageTargetArgs(args, false)
+	if err != nil {
+		return errors.New("用法: outlookctl mail flag|unflag <message-id> [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, target.Account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SetMessageFlag(ctx, loginResult.AccessToken, target.MessageID, flagged); err != nil {
+		return err
+	}
+
+	state := "已取消旗标"
+	if flagged {
+		state = "已设置旗标"
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件%s: %s\n", state, target.MessageID)
+	return nil
+}
+
+// runMailSetImportance 设置邮件重要性。
+func runMailSetImportance(args []string) error {
+	var account, level, messageID string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--account":
+			if i+1 >= len(args) {
+				return errors.New("--account 缺少值")
+			}
+			i++
+			account = args[i]
+		case strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+		case arg == "--level":
+			if i+1 >= len(args) {
+				return errors.New("--level 缺少值")
+			}
+			i++
+			level = args[i]
+		case strings.HasPrefix(arg, "--level="):
+			level = strings.TrimPrefix(arg, "--level=")
+		case strings.HasPrefix(arg, "-"):
+			return fmt.Errorf("未知参数: %s", arg)
+		default:
+			if messageID != "" {
+				return errors.New("只能指定一个邮件 ID")
+			}
+			messageID = arg
+		}
+	}
+	if messageID == "" || level == "" {
+		return errors.New("用法: outlookctl mail importance <message-id> --level low|normal|high [--account <email>]")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, account)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SetMessageImportance(ctx, loginResult.AccessToken, messageID, level); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件重要性已设置为 %s: %s\n", level, messageID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -645,5 +1515,22 @@ func printUsage() {
   outlookctl mail read <message-id>         读取单封邮件详情
   outlookctl mail mark-read <message-id>    标记邮件为已读
   outlookctl mail mark-unread <message-id>  标记邮件为未读
+  outlookctl mail folders                    列出邮件文件夹
+  outlookctl mail move <message-id> --folder <文件夹>  移动邮件
+  outlookctl mail delete <message-id>        删除邮件
+  outlookctl mail attachments <message-id>   列出邮件附件
+  outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
+  outlookctl mail reply <message-id> --body <正文>           回复邮件
+  outlookctl mail reply-all <message-id> --body <正文>       回复全部
+  outlookctl mail forward <message-id> --to <邮箱>          转发邮件
+  outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>  创建草稿
+  outlookctl mail drafts                     列出草稿
+  outlookctl mail draft-send <draft-id>      发送草稿
+  outlookctl mail folder-create --name <名称>  创建文件夹
+  outlookctl mail folder-rename <id> --name <名称>  重命名文件夹
+  outlookctl mail folder-delete <id>         删除文件夹
+  outlookctl mail flag <message-id>         设置邮件旗标
+  outlookctl mail unflag <message-id>       取消邮件旗标
+  outlookctl mail importance <message-id> --level low|normal|high  设置重要性
   outlookctl version                       查看版本`)
 }

@@ -21,6 +21,7 @@ type Message struct {
 	IsRead           bool        `json:"isRead"`
 	WebLink          string      `json:"webLink"`
 	BodyPreview      string      `json:"bodyPreview"`
+	HasAttachments   bool        `json:"hasAttachments"`
 	From             MessageFrom `json:"from"`
 }
 
@@ -55,7 +56,7 @@ func ListInboxMessages(ctx context.Context, accessToken string, top int) ([]Mess
 
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,receivedDateTime,isRead,webLink,bodyPreview,from")
+	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
 	query.Set("$orderby", "receivedDateTime desc")
 	endpoint := graphBaseURL + "/me/mailFolders/inbox/messages?" + query.Encode()
 
@@ -102,7 +103,7 @@ func SearchMessages(ctx context.Context, accessToken, query string, top int) ([]
 	escaped := strings.ReplaceAll(query, `"`, `\"`)
 	values.Set("$search", `"`+escaped+`"`)
 	values.Set("$top", strconv.Itoa(top))
-	values.Set("$select", "id,subject,receivedDateTime,isRead,webLink,bodyPreview,from")
+	values.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
 	endpoint := graphBaseURL + "/me/messages?" + values.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
