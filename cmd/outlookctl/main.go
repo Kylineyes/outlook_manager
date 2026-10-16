@@ -1674,6 +1674,12 @@ func runCalendar(args []string) error {
 	switch args[0] {
 	case "list":
 		return runCalendarList(args[1:])
+	case "create":
+		return runCalendarCreate(args[1:])
+	case "update":
+		return runCalendarUpdate(args[1:])
+	case "delete":
+		return runCalendarDelete(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 calendar 子命令: %s", args[0])
@@ -1758,6 +1764,12 @@ func runContacts(args []string) error {
 	switch args[0] {
 	case "list":
 		return runContactsList(args[1:])
+	case "create":
+		return runContactsCreate(args[1:])
+	case "update":
+		return runContactsUpdate(args[1:])
+	case "delete":
+		return runContactsDelete(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
@@ -1820,6 +1832,349 @@ func runContactsList(args []string) error {
 	return nil
 }
 
+// parseCalendarTime 解析命令行传入的日历时间。
+func parseCalendarTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.ParseInLocation(layout, value, time.UTC); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("无法解析时间: %s", value)
+}
+
+// runCalendarCreate 创建日历事件。
+func runCalendarCreate(args []string) error {
+	fs := flag.NewFlagSet("calendar create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	subjectFlag := fs.String("subject", "", "事件主题")
+	startFlag := fs.String("start", "", "开始时间，例如 2026-10-20T10:00:00")
+	endFlag := fs.String("end", "", "结束时间，例如 2026-10-20T11:00:00")
+	bodyFlag := fs.String("body", "", "事件正文")
+	locationFlag := fs.String("location", "", "事件地点")
+	timezoneFlag := fs.String("timezone", "UTC", "时区，例如 UTC 或 China Standard Time")
+	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*subjectFlag) == "" || strings.TrimSpace(*startFlag) == "" || strings.TrimSpace(*endFlag) == "" {
+		return errors.New("用法: outlookctl calendar create --subject <主题> --start <开始时间> --end <结束时间>")
+	}
+	start, err := parseCalendarTime(*startFlag)
+	if err != nil {
+		return err
+	}
+	end, err := parseCalendarTime(*endFlag)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	event, err := graph.CreateCalendarEvent(ctx, loginResult.AccessToken, graph.CalendarEventInput{
+		Subject:  *subjectFlag,
+		Body:     *bodyFlag,
+		Start:    start,
+		End:      end,
+		TimeZone: *timezoneFlag,
+		Location: *locationFlag,
+		IsAllDay: *allDayFlag,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "事件已创建: %s\n", event.Subject)
+	fmt.Fprintf(os.Stdout, "事件 ID: %s\n", event.ID)
+	return nil
+}
+
+// runCalendarUpdate 更新日历事件。
+func runCalendarUpdate(args []string) error {
+	fs := flag.NewFlagSet("calendar update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	subjectFlag := fs.String("subject", "", "事件主题")
+	startFlag := fs.String("start", "", "开始时间")
+	endFlag := fs.String("end", "", "结束时间")
+	bodyFlag := fs.String("body", "", "事件正文")
+	locationFlag := fs.String("location", "", "事件地点")
+	timezoneFlag := fs.String("timezone", "UTC", "时区")
+	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*subjectFlag) == "" || strings.TrimSpace(*startFlag) == "" || strings.TrimSpace(*endFlag) == "" {
+		return errors.New("用法: outlookctl calendar update --id <事件ID> --subject <主题> --start <开始时间> --end <结束时间>")
+	}
+	start, err := parseCalendarTime(*startFlag)
+	if err != nil {
+		return err
+	}
+	end, err := parseCalendarTime(*endFlag)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	event, err := graph.UpdateCalendarEvent(ctx, loginResult.AccessToken, *idFlag, graph.CalendarEventInput{
+		Subject:  *subjectFlag,
+		Body:     *bodyFlag,
+		Start:    start,
+		End:      end,
+		TimeZone: *timezoneFlag,
+		Location: *locationFlag,
+		IsAllDay: *allDayFlag,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "事件已更新: %s\n", event.Subject)
+	fmt.Fprintf(os.Stdout, "事件 ID: %s\n", event.ID)
+	return nil
+}
+
+// runCalendarDelete 删除日历事件。
+func runCalendarDelete(args []string) error {
+	fs := flag.NewFlagSet("calendar delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl calendar delete --id <事件ID>")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteCalendarEvent(ctx, loginResult.AccessToken, *idFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "事件已删除: %s\n", *idFlag)
+	return nil
+}
+
+// runContactsCreate 创建联系人。
+func runContactsCreate(args []string) error {
+	fs := flag.NewFlagSet("contacts create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	displayNameFlag := fs.String("display-name", "", "显示名称")
+	givenNameFlag := fs.String("given-name", "", "名")
+	surnameFlag := fs.String("surname", "", "姓")
+	emailFlag := fs.String("email", "", "邮箱，多个用逗号分隔")
+	companyFlag := fs.String("company", "", "公司")
+	jobTitleFlag := fs.String("job-title", "", "职位")
+	mobileFlag := fs.String("mobile", "", "手机号")
+	businessFlag := fs.String("business-phone", "", "工作电话，多个用逗号分隔")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*displayNameFlag) == "" {
+		return errors.New("用法: outlookctl contacts create --display-name <名称>")
+	}
+	input := graph.ContactInput{
+		DisplayName: *displayNameFlag,
+		GivenName:   *givenNameFlag,
+		Surname:     *surnameFlag,
+		CompanyName: *companyFlag,
+		JobTitle:    *jobTitleFlag,
+		MobilePhone: *mobileFlag,
+	}
+	for _, address := range splitAddresses(*emailFlag) {
+		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
+	}
+	input.BusinessPhones = splitAddresses(*businessFlag)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	contact, err := graph.CreateContact(ctx, loginResult.AccessToken, input)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已创建: %s\n", contact.DisplayName)
+	fmt.Fprintf(os.Stdout, "联系人 ID: %s\n", contact.ID)
+	return nil
+}
+
+// runContactsUpdate 更新联系人。
+func runContactsUpdate(args []string) error {
+	fs := flag.NewFlagSet("contacts update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "联系人 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	displayNameFlag := fs.String("display-name", "", "显示名称")
+	givenNameFlag := fs.String("given-name", "", "名")
+	surnameFlag := fs.String("surname", "", "姓")
+	emailFlag := fs.String("email", "", "邮箱，多个用逗号分隔")
+	companyFlag := fs.String("company", "", "公司")
+	jobTitleFlag := fs.String("job-title", "", "职位")
+	mobileFlag := fs.String("mobile", "", "手机号")
+	businessFlag := fs.String("business-phone", "", "工作电话，多个用逗号分隔")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*displayNameFlag) == "" {
+		return errors.New("用法: outlookctl contacts update --id <联系人ID> --display-name <名称>")
+	}
+	input := graph.ContactInput{
+		DisplayName: *displayNameFlag,
+		GivenName:   *givenNameFlag,
+		Surname:     *surnameFlag,
+		CompanyName: *companyFlag,
+		JobTitle:    *jobTitleFlag,
+		MobilePhone: *mobileFlag,
+	}
+	for _, address := range splitAddresses(*emailFlag) {
+		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
+	}
+	input.BusinessPhones = splitAddresses(*businessFlag)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	contact, err := graph.UpdateContact(ctx, loginResult.AccessToken, *idFlag, input)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已更新: %s\n", contact.DisplayName)
+	return nil
+}
+
+// runContactsDelete 删除联系人。
+func runContactsDelete(args []string) error {
+	fs := flag.NewFlagSet("contacts delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "联系人 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl contacts delete --id <联系人ID>")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteContact(ctx, loginResult.AccessToken, *idFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已删除: %s\n", *idFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -1841,7 +2196,13 @@ func printUsage() {
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
   outlookctl calendar list --days 7          查看未来日历事件
+  outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
+  outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
+  outlookctl calendar delete --id <事件ID>  删除事件
   outlookctl contacts list --top 50          查看联系人
+  outlookctl contacts create --display-name <名称>  创建联系人
+  outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
+  outlookctl contacts delete --id <联系人ID>  删除联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件

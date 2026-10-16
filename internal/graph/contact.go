@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -68,4 +69,133 @@ func ListContacts(ctx context.Context, accessToken string, top int) ([]Contact, 
 		return nil, fmt.Errorf("解析 Graph 联系人列表失败: %w", err)
 	}
 	return result.Value, nil
+}
+
+// ContactInput 是创建或更新联系人的输入。
+type ContactInput struct {
+	DisplayName    string
+	GivenName      string
+	Surname        string
+	EmailAddresses []ContactEmailAddress
+	CompanyName    string
+	JobTitle       string
+	MobilePhone    string
+	BusinessPhones []string
+}
+
+// buildContactPayload 构造 Graph 联系人请求体。
+func buildContactPayload(input ContactInput) map[string]any {
+	payload := map[string]any{
+		"displayName": input.DisplayName,
+	}
+	if strings.TrimSpace(input.GivenName) != "" {
+		payload["givenName"] = input.GivenName
+	}
+	if strings.TrimSpace(input.Surname) != "" {
+		payload["surname"] = input.Surname
+	}
+	if len(input.EmailAddresses) > 0 {
+		payload["emailAddresses"] = input.EmailAddresses
+	}
+	if strings.TrimSpace(input.CompanyName) != "" {
+		payload["companyName"] = input.CompanyName
+	}
+	if strings.TrimSpace(input.JobTitle) != "" {
+		payload["jobTitle"] = input.JobTitle
+	}
+	if strings.TrimSpace(input.MobilePhone) != "" {
+		payload["mobilePhone"] = input.MobilePhone
+	}
+	if len(input.BusinessPhones) > 0 {
+		payload["businessPhones"] = input.BusinessPhones
+	}
+	return payload
+}
+
+// CreateContact 创建联系人。
+func CreateContact(ctx context.Context, accessToken string, input ContactInput) (*Contact, error) {
+	data, err := json.Marshal(buildContactPayload(input))
+	if err != nil {
+		return nil, fmt.Errorf("序列化创建联系人请求失败: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphBaseURL+"/me/contacts", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("创建联系人请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 创建联系人失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 创建联系人返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var contact Contact
+	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
+		return nil, fmt.Errorf("解析创建联系人响应失败: %w", err)
+	}
+	return &contact, nil
+}
+
+// UpdateContact 更新联系人。
+func UpdateContact(ctx context.Context, accessToken, contactID string, input ContactInput) (*Contact, error) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return nil, fmt.Errorf("联系人 ID 不能为空")
+	}
+	data, err := json.Marshal(buildContactPayload(input))
+	if err != nil {
+		return nil, fmt.Errorf("序列化更新联系人请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/contacts/" + url.PathEscape(contactID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("创建更新联系人请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 更新联系人失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 更新联系人返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var contact Contact
+	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
+		return nil, fmt.Errorf("解析更新联系人响应失败: %w", err)
+	}
+	return &contact, nil
+}
+
+// DeleteContact 删除联系人。
+func DeleteContact(ctx context.Context, accessToken, contactID string) error {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return fmt.Errorf("联系人 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/contacts/" + url.PathEscape(contactID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建删除联系人请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 删除联系人失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 删除联系人返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }
