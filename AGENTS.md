@@ -81,7 +81,10 @@ outlook_manager/
 - `outlookctl mail flag`
 - `outlookctl mail unflag`
 - `outlookctl mail importance`
-- 对应的 MCP 工具：`account_list`、`auth_status`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_move`、`mail_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`
+- `outlookctl mail message-categories`
+- `outlookctl mail category-add`
+- `outlookctl mail category-remove`
+- 对应的 MCP 工具：`account_list`、`auth_status`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_move`、`mail_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`、`mail_message_categories`、`mail_category_add`、`mail_category_remove`
 
 ## 4. 代码编写准则
 
