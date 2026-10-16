@@ -203,6 +203,70 @@ type contactsListArgs struct {
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个联系人，默认 50，最大 200"`
 }
 
+// calendarCreateArgs 是 calendar_create tool 的输入参数。
+type calendarCreateArgs struct {
+	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Subject  string `json:"subject" jsonschema:"事件主题"`
+	Start    string `json:"start" jsonschema:"开始时间，RFC3339 或 2006-01-02 15:04:05"`
+	End      string `json:"end" jsonschema:"结束时间，RFC3339 或 2006-01-02 15:04:05"`
+	Body     string `json:"body,omitempty" jsonschema:"事件正文"`
+	Location string `json:"location,omitempty" jsonschema:"事件地点"`
+	TimeZone string `json:"timeZone,omitempty" jsonschema:"时区，默认 UTC"`
+	IsAllDay bool   `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
+}
+
+// calendarUpdateArgs 是 calendar_update tool 的输入参数。
+type calendarUpdateArgs struct {
+	ID       string `json:"id" jsonschema:"事件 ID"`
+	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Subject  string `json:"subject" jsonschema:"事件主题"`
+	Start    string `json:"start" jsonschema:"开始时间"`
+	End      string `json:"end" jsonschema:"结束时间"`
+	Body     string `json:"body,omitempty" jsonschema:"事件正文"`
+	Location string `json:"location,omitempty" jsonschema:"事件地点"`
+	TimeZone string `json:"timeZone,omitempty" jsonschema:"时区，默认 UTC"`
+	IsAllDay bool   `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
+}
+
+// calendarDeleteArgs 是 calendar_delete tool 的输入参数。
+type calendarDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"事件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsCreateArgs 是 contacts_create tool 的输入参数。
+type contactsCreateArgs struct {
+	Account        string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	DisplayName    string   `json:"displayName" jsonschema:"显示名称"`
+	GivenName      string   `json:"givenName,omitempty" jsonschema:"名"`
+	Surname        string   `json:"surname,omitempty" jsonschema:"姓"`
+	Emails         []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
+	CompanyName    string   `json:"companyName,omitempty" jsonschema:"公司"`
+	JobTitle       string   `json:"jobTitle,omitempty" jsonschema:"职位"`
+	MobilePhone    string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
+	BusinessPhones []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+}
+
+// contactsUpdateArgs 是 contacts_update tool 的输入参数。
+type contactsUpdateArgs struct {
+	ID             string   `json:"id" jsonschema:"联系人 ID"`
+	Account        string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	DisplayName    string   `json:"displayName" jsonschema:"显示名称"`
+	GivenName      string   `json:"givenName,omitempty" jsonschema:"名"`
+	Surname        string   `json:"surname,omitempty" jsonschema:"姓"`
+	Emails         []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
+	CompanyName    string   `json:"companyName,omitempty" jsonschema:"公司"`
+	JobTitle       string   `json:"jobTitle,omitempty" jsonschema:"职位"`
+	MobilePhone    string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
+	BusinessPhones []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+}
+
+// contactsDeleteArgs 是 contacts_delete tool 的输入参数。
+type contactsDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -377,6 +441,35 @@ func main() {
 		Description: "读取联系人列表",
 	}, contactsListHandler)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_create",
+		Description: "创建日历事件",
+	}, calendarCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_update",
+		Description: "更新日历事件",
+	}, calendarUpdateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_delete",
+		Description: "删除日历事件",
+	}, calendarDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_create",
+		Description: "创建联系人",
+	}, contactsCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_update",
+		Description: "更新联系人",
+	}, contactsUpdateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_delete",
+		Description: "删除联系人",
+	}, contactsDeleteHandler)
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
 	}
@@ -1393,6 +1486,286 @@ func contactsListHandler(ctx context.Context, req *mcp.CallToolRequest, args con
 	return jsonResult(map[string]any{
 		"account":  selected.Username,
 		"contacts": contacts,
+	})
+}
+
+// parseCalendarTimeValue 解析 MCP 传入的日历时间。
+func parseCalendarTimeValue(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.ParseInLocation(layout, value, time.UTC); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("无法解析时间: %s", value)
+}
+
+// calendarCreateHandler 创建日历事件。
+func calendarCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarCreateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Subject) == "" || strings.TrimSpace(args.Start) == "" || strings.TrimSpace(args.End) == "" {
+		return nil, nil, fmt.Errorf("主题、开始时间和结束时间不能为空")
+	}
+	start, err := parseCalendarTimeValue(args.Start)
+	if err != nil {
+		return nil, nil, err
+	}
+	end, err := parseCalendarTimeValue(args.End)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	event, err := graph.CreateCalendarEvent(ctx, loginResult.AccessToken, graph.CalendarEventInput{
+		Subject:  args.Subject,
+		Body:     args.Body,
+		Start:    start,
+		End:      end,
+		TimeZone: args.TimeZone,
+		Location: args.Location,
+		IsAllDay: args.IsAllDay,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"event":   event,
+	})
+}
+
+// calendarUpdateHandler 更新日历事件。
+func calendarUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarUpdateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 不能为空")
+	}
+	start, err := parseCalendarTimeValue(args.Start)
+	if err != nil {
+		return nil, nil, err
+	}
+	end, err := parseCalendarTimeValue(args.End)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	event, err := graph.UpdateCalendarEvent(ctx, loginResult.AccessToken, args.ID, graph.CalendarEventInput{
+		Subject:  args.Subject,
+		Body:     args.Body,
+		Start:    start,
+		End:      end,
+		TimeZone: args.TimeZone,
+		Location: args.Location,
+		IsAllDay: args.IsAllDay,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"event":   event,
+	})
+}
+
+// calendarDeleteHandler 删除日历事件。
+func calendarDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteCalendarEvent(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"eventId": args.ID,
+	})
+}
+
+// contactsCreateHandler 创建联系人。
+func contactsCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsCreateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.DisplayName) == "" {
+		return nil, nil, fmt.Errorf("显示名称不能为空")
+	}
+	input := graph.ContactInput{
+		DisplayName: args.DisplayName,
+		GivenName:   args.GivenName,
+		Surname:     args.Surname,
+		CompanyName: args.CompanyName,
+		JobTitle:    args.JobTitle,
+		MobilePhone: args.MobilePhone,
+	}
+	for _, address := range args.Emails {
+		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
+	}
+	input.BusinessPhones = args.BusinessPhones
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	contact, err := graph.CreateContact(ctx, loginResult.AccessToken, input)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"contact": contact,
+	})
+}
+
+// contactsUpdateHandler 更新联系人。
+func contactsUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsUpdateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.DisplayName) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 和显示名称不能为空")
+	}
+	input := graph.ContactInput{
+		DisplayName: args.DisplayName,
+		GivenName:   args.GivenName,
+		Surname:     args.Surname,
+		CompanyName: args.CompanyName,
+		JobTitle:    args.JobTitle,
+		MobilePhone: args.MobilePhone,
+	}
+	for _, address := range args.Emails {
+		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
+	}
+	input.BusinessPhones = args.BusinessPhones
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	contact, err := graph.UpdateContact(ctx, loginResult.AccessToken, args.ID, input)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"contact": contact,
+	})
+}
+
+// contactsDeleteHandler 删除联系人。
+func contactsDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteContact(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"contactId": args.ID,
 	})
 }
 
