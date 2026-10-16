@@ -307,6 +307,48 @@ type contactsFolderDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailRulesArgs 是 mail_rules_list tool 的输入参数。
+type mailRulesArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailRuleCreateArgs 是 mail_rule_create tool 的输入参数。
+type mailRuleCreateArgs struct {
+	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Name            string   `json:"name" jsonschema:"规则名称"`
+	From            []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
+	SubjectContains []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
+	MoveTo          string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
+	MarkAsRead      bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
+	Delete          bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
+	Stop            bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
+	Disabled        bool     `json:"disabled,omitempty" jsonschema:"创建为禁用状态"`
+}
+
+// mailRuleDeleteArgs 是 mail_rule_delete tool 的输入参数。
+type mailRuleDeleteArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID      string `json:"id" jsonschema:"规则 ID"`
+}
+
+// mailMasterCategoriesArgs 是 mail_master_categories_list tool 的输入参数。
+type mailMasterCategoriesArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailMasterCategoryCreateArgs 是 mail_master_category_create tool 的输入参数。
+type mailMasterCategoryCreateArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Name    string `json:"name" jsonschema:"类别名称"`
+	Color   string `json:"color,omitempty" jsonschema:"类别颜色，例如 preset0"`
+}
+
+// mailMasterCategoryDeleteArgs 是 mail_master_category_delete tool 的输入参数。
+type mailMasterCategoryDeleteArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID      string `json:"id" jsonschema:"类别 ID"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -529,6 +571,35 @@ func main() {
 		Name:        "contacts_folder_delete",
 		Description: "删除联系人文件夹",
 	}, contactsFolderDeleteHandler)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_rules_list",
+		Description: "列出收件箱规则",
+	}, mailRulesHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_rule_create",
+		Description: "创建收件箱规则",
+	}, mailRuleCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_rule_delete",
+		Description: "删除收件箱规则",
+	}, mailRuleDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_master_categories_list",
+		Description: "列出主类别",
+	}, mailMasterCategoriesHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_master_category_create",
+		Description: "创建主类别",
+	}, mailMasterCategoryCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_master_category_delete",
+		Description: "删除主类别",
+	}, mailMasterCategoryDeleteHandler)
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
 	}
@@ -1986,6 +2057,222 @@ func contactsFolderDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, 
 		"success":  true,
 		"account":  selected.Username,
 		"folderId": args.ID,
+	})
+}
+
+// mailRulesHandler 列出收件箱规则。
+func mailRulesHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRulesArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	rules, err := graph.ListMessageRules(ctx, loginResult.AccessToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account": selected.Username,
+		"rules":   rules,
+	})
+}
+
+// mailRuleCreateHandler 创建收件箱规则。
+func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRuleCreateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("规则名称不能为空")
+	}
+	if len(args.From) == 0 && len(args.SubjectContains) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个规则条件")
+	}
+	if strings.TrimSpace(args.MoveTo) == "" && !args.MarkAsRead && !args.Delete && !args.Stop {
+		return nil, nil, fmt.Errorf("至少需要一个规则动作")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	moveTo := strings.TrimSpace(args.MoveTo)
+	if moveTo != "" {
+		moveTo, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, moveTo)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	rule, err := graph.CreateMessageRule(ctx, loginResult.AccessToken, graph.MessageRuleInput{
+		DisplayName:         args.Name,
+		FromAddresses:       args.From,
+		SubjectContains:     args.SubjectContains,
+		MoveToFolder:        moveTo,
+		MarkAsRead:          args.MarkAsRead,
+		Delete:              args.Delete,
+		StopProcessingRules: args.Stop,
+		IsEnabled:           !args.Disabled,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"rule":    rule,
+	})
+}
+
+// mailRuleDeleteHandler 删除收件箱规则。
+func mailRuleDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRuleDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("规则 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteMessageRule(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"ruleId":  args.ID,
+	})
+}
+
+// mailMasterCategoriesHandler 列出主类别。
+func mailMasterCategoriesHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMasterCategoriesArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	categories, err := graph.ListMasterCategories(ctx, loginResult.AccessToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account":    selected.Username,
+		"categories": categories,
+	})
+}
+
+// mailMasterCategoryCreateHandler 创建主类别。
+func mailMasterCategoryCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMasterCategoryCreateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("类别名称不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	category, err := graph.CreateMasterCategory(ctx, loginResult.AccessToken, args.Name, args.Color)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"category": category,
+	})
+}
+
+// mailMasterCategoryDeleteHandler 删除主类别。
+func mailMasterCategoryDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMasterCategoryDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("类别 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteMasterCategory(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":    true,
+		"account":    selected.Username,
+		"categoryId": args.ID,
 	})
 }
 
