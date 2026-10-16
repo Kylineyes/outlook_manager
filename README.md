@@ -23,6 +23,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件附件列表
 - 邮件附件下载
 - 邮件类别查看、添加、移除
+- 日历事件读取
+- 联系人读取
 - 草稿创建、列表、发送
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
@@ -80,7 +82,9 @@ outlookctl mail attachments <message-id>
 outlookctl mail attachment-save <message-id> --attachment <attachment-id> --out C:\temp\file.pdf
 outlookctl mail message-categories <message-id>
 outlookctl mail category-add <message-id> --category "名称"
-outlookctl mail category-remove <message-id> --category "名称"
+outlookctl mail category-remove <message-id> --category "名称"
+outlookctl calendar list --days 7
+outlookctl contacts list --top 20
 outlookctl mail reply <message-id> --body "回复内容"
 outlookctl mail reply-all <message-id> --body "回复内容"
 outlookctl mail forward <message-id> --to someone@example.com --body "转发内容"
@@ -115,6 +119,8 @@ outlookctl mail importance <message-id> --level high
 - `mail_message_categories`
 - `mail_category_add`
 - `mail_category_remove`
+- `calendar_list`
+- `contacts_list`
 - `mail_reply`
 - `mail_reply_all`
 - `mail_forward`
