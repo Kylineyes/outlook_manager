@@ -2047,6 +2047,7 @@ func runContactsCreate(args []string) error {
 	fs := flag.NewFlagSet("contacts create", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
 	displayNameFlag := fs.String("display-name", "", "显示名称")
 	givenNameFlag := fs.String("given-name", "", "名")
 	surnameFlag := fs.String("surname", "", "姓")
@@ -2092,7 +2093,16 @@ func runContactsCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	contact, err := graph.CreateContact(ctx, loginResult.AccessToken, input)
+	var contact *graph.Contact
+	if strings.TrimSpace(*folderFlag) == "" {
+		contact, err = graph.CreateContact(ctx, loginResult.AccessToken, input)
+	} else {
+		folderID, resolveErr := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		contact, err = graph.CreateContactInFolder(ctx, loginResult.AccessToken, folderID, input)
+	}
 	if err != nil {
 		return err
 	}

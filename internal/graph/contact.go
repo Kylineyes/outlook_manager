@@ -115,13 +115,23 @@ func buildContactPayload(input ContactInput) map[string]any {
 	return payload
 }
 
-// CreateContact 创建联系人。
+// CreateContact 在默认联系人文件夹中创建联系人。
 func CreateContact(ctx context.Context, accessToken string, input ContactInput) (*Contact, error) {
+	return CreateContactInFolder(ctx, accessToken, "", input)
+}
+
+// CreateContactInFolder 在指定联系人文件夹中创建联系人。
+// folderID 为空时创建到默认联系人文件夹。
+func CreateContactInFolder(ctx context.Context, accessToken, folderID string, input ContactInput) (*Contact, error) {
 	data, err := json.Marshal(buildContactPayload(input))
 	if err != nil {
 		return nil, fmt.Errorf("序列化创建联系人请求失败: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphBaseURL+"/me/contacts", bytes.NewReader(data))
+	endpoint := graphBaseURL + "/me/contacts"
+	if strings.TrimSpace(folderID) != "" {
+		endpoint = graphBaseURL + "/me/contactFolders/" + url.PathEscape(folderID) + "/contacts"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("创建联系人请求失败: %w", err)
 	}
