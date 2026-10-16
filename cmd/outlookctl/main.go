@@ -1764,6 +1764,12 @@ func runContacts(args []string) error {
 	switch args[0] {
 	case "list":
 		return runContactsList(args[1:])
+	case "folders":
+		return runContactsFolders(args[1:])
+	case "folder-create":
+		return runContactsFolderCreate(args[1:])
+	case "folder-delete":
+		return runContactsFolderDelete(args[1:])
 	case "search":
 		return runContactsSearch(args[1:])
 	case "create":
@@ -1783,6 +1789,7 @@ func runContactsList(args []string) error {
 	fs := flag.NewFlagSet("contacts list", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
 	topFlag := fs.Int("top", 50, "最多返回多少个联系人，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
 	if err := fs.Parse(args); err != nil {
@@ -1808,7 +1815,16 @@ func runContactsList(args []string) error {
 	if err != nil {
 		return err
 	}
-	contacts, err := graph.ListContacts(ctx, loginResult.AccessToken, *topFlag)
+	var contacts []graph.Contact
+	if strings.TrimSpace(*folderFlag) == "" {
+		contacts, err = graph.ListContacts(ctx, loginResult.AccessToken, *topFlag)
+	} else {
+		folderID, resolveErr := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		contacts, err = graph.ListContactsInFolder(ctx, loginResult.AccessToken, folderID, *topFlag)
+	}
 	if err != nil {
 		return err
 	}
@@ -2243,6 +2259,133 @@ func runContactsSearch(args []string) error {
 	return nil
 }
 
+// runContactsFolders 列出联系人文件夹。
+func runContactsFolders(args []string) error {
+	fs := flag.NewFlagSet("contacts folders", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 50, "最多返回多少个文件夹，范围 1-200")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folders, err := graph.ListContactFolders(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(folders, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化联系人文件夹失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人文件夹数量: %d\n", len(folders))
+	for _, folder := range folders {
+		fmt.Fprintf(os.Stdout, "- %s | id=%s\n", folder.DisplayName, folder.ID)
+	}
+	return nil
+}
+
+// runContactsFolderCreate 创建联系人文件夹。
+func runContactsFolderCreate(args []string) error {
+	fs := flag.NewFlagSet("contacts folder-create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	nameFlag := fs.String("name", "", "文件夹名称")
+	parentFlag := fs.String("parent", "", "父文件夹 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl contacts folder-create --name <名称>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folder, err := graph.CreateContactFolder(ctx, loginResult.AccessToken, *nameFlag, *parentFlag)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人文件夹已创建: %s\n", folder.DisplayName)
+	fmt.Fprintf(os.Stdout, "文件夹 ID: %s\n", folder.ID)
+	return nil
+}
+
+// runContactsFolderDelete 删除联系人文件夹。
+func runContactsFolderDelete(args []string) error {
+	fs := flag.NewFlagSet("contacts folder-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "文件夹 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl contacts folder-delete --id <文件夹ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteContactFolder(ctx, loginResult.AccessToken, *idFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人文件夹已删除: %s\n", *idFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2269,6 +2412,9 @@ func printUsage() {
   outlookctl calendar delete --id <事件ID>  删除事件
   outlookctl contacts list --top 50          查看联系人
   outlookctl contacts search --query <关键字>  搜索联系人
+  outlookctl contacts folders               列出联系人文件夹
+  outlookctl contacts folder-create --name <名称>  创建联系人文件夹
+  outlookctl contacts folder-delete --id <文件夹ID>  删除联系人文件夹
   outlookctl contacts create --display-name <名称>  创建联系人
   outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
   outlookctl contacts delete --id <联系人ID>  删除联系人

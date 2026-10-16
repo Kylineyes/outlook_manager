@@ -200,6 +200,7 @@ type calendarListArgs struct {
 // contactsListArgs 是 contacts_list tool 的输入参数。
 type contactsListArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Folder  string `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个联系人，默认 50，最大 200"`
 }
 
@@ -276,6 +277,25 @@ type contactsSearchArgs struct {
 	Query   string `json:"query" jsonschema:"搜索关键字，按显示名称前缀匹配"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个联系人，默认 20，最大 200"`
+}
+
+// contactsFoldersArgs 是 contacts_folders_list tool 的输入参数。
+type contactsFoldersArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个文件夹，默认 50，最大 200"`
+}
+
+// contactsFolderCreateArgs 是 contacts_folder_create tool 的输入参数。
+type contactsFolderCreateArgs struct {
+	Name    string `json:"name" jsonschema:"文件夹名称"`
+	Parent  string `json:"parent,omitempty" jsonschema:"父文件夹 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsFolderDeleteArgs 是 contacts_folder_delete tool 的输入参数。
+type contactsFolderDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"文件夹 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -486,6 +506,20 @@ func main() {
 		Description: "按显示名称前缀搜索联系人",
 	}, contactsSearchHandler)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_folders_list",
+		Description: "列出联系人文件夹",
+	}, contactsFoldersHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_folder_create",
+		Description: "创建联系人文件夹",
+	}, contactsFolderCreateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_folder_delete",
+		Description: "删除联系人文件夹",
+	}, contactsFolderDeleteHandler)
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
 	}
@@ -1495,7 +1529,16 @@ func contactsListHandler(ctx context.Context, req *mcp.CallToolRequest, args con
 	if err != nil {
 		return nil, nil, err
 	}
-	contacts, err := graph.ListContacts(ctx, loginResult.AccessToken, args.Top)
+	var contacts []graph.Contact
+	if strings.TrimSpace(args.Folder) == "" {
+		contacts, err = graph.ListContacts(ctx, loginResult.AccessToken, args.Top)
+	} else {
+		folderID, resolveErr := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, args.Folder)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		contacts, err = graph.ListContactsInFolder(ctx, loginResult.AccessToken, folderID, args.Top)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1820,6 +1863,103 @@ func contactsSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 	return jsonResult(map[string]any{
 		"account":  selected.Username,
 		"contacts": contacts,
+	})
+}
+
+// contactsFoldersHandler 列出联系人文件夹。
+func contactsFoldersHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsFoldersArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folders, err := graph.ListContactFolders(ctx, loginResult.AccessToken, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account": selected.Username,
+		"folders": folders,
+	})
+}
+
+// contactsFolderCreateHandler 创建联系人文件夹。
+func contactsFolderCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsFolderCreateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("文件夹名称不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folder, err := graph.CreateContactFolder(ctx, loginResult.AccessToken, args.Name, args.Parent)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"folder":  folder,
+	})
+}
+
+// contactsFolderDeleteHandler 删除联系人文件夹。
+func contactsFolderDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsFolderDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("文件夹 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteContactFolder(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"folderId": args.ID,
 	})
 }
 

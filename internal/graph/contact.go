@@ -29,39 +29,43 @@ type Contact struct {
 	BusinessPhones []string              `json:"businessPhones"`
 }
 
-// ListContacts 读取当前账号的联系人列表。
+// ListContacts 读取当前账号默认联系人文件夹中的联系人列表。
 func ListContacts(ctx context.Context, accessToken string, top int) ([]Contact, error) {
+	return ListContactsInFolder(ctx, accessToken, "", top)
+}
+
+// ListContactsInFolder 读取指定联系人文件夹中的联系人列表。
+// folderID 为空时读取默认联系人文件夹。
+func ListContactsInFolder(ctx context.Context, accessToken, folderID string, top int) ([]Contact, error) {
 	if top <= 0 {
 		top = 50
 	}
 	if top > 200 {
 		top = 200
 	}
-
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(top))
 	query.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones")
 	query.Set("$orderby", "displayName")
 	endpoint := graphBaseURL + "/me/contacts?" + query.Encode()
-
+	if strings.TrimSpace(folderID) != "" {
+		endpoint = graphBaseURL + "/me/contactFolders/" + url.PathEscape(folderID) + "/contacts?" + query.Encode()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建联系人列表请求失败: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 联系人列表失败: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("Graph 联系人列表返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-
 	var result struct {
 		Value []Contact `json:"value"`
 	}
@@ -71,7 +75,6 @@ func ListContacts(ctx context.Context, accessToken string, top int) ([]Contact, 
 	return result.Value, nil
 }
 
-// ContactInput 是创建或更新联系人的输入。
 type ContactInput struct {
 	DisplayName    string
 	GivenName      string
@@ -244,4 +247,128 @@ func SearchContacts(ctx context.Context, accessToken, query string, top int) ([]
 		return nil, fmt.Errorf("解析 Graph 联系人搜索失败: %w", err)
 	}
 	return result.Value, nil
+}
+
+// ContactFolder 表示一个联系人文件夹。
+type ContactFolder struct {
+	ID             string `json:"id"`
+	DisplayName    string `json:"displayName"`
+	ParentFolderID string `json:"parentFolderId"`
+}
+
+// ListContactFolders 读取联系人文件夹列表。
+func ListContactFolders(ctx context.Context, accessToken string, top int) ([]ContactFolder, error) {
+	if top <= 0 {
+		top = 50
+	}
+	if top > 200 {
+		top = 200
+	}
+	query := url.Values{}
+	query.Set("$top", strconv.Itoa(top))
+	query.Set("$select", "id,displayName,parentFolderId")
+	query.Set("$orderby", "displayName")
+	endpoint := graphBaseURL + "/me/contactFolders?" + query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建联系人文件夹列表请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 联系人文件夹列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 联系人文件夹列表返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result struct {
+		Value []ContactFolder `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 Graph 联系人文件夹列表失败: %w", err)
+	}
+	return result.Value, nil
+}
+
+// CreateContactFolder 创建联系人文件夹。
+func CreateContactFolder(ctx context.Context, accessToken, displayName, parentID string) (*ContactFolder, error) {
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return nil, fmt.Errorf("文件夹名称不能为空")
+	}
+	payload, err := json.Marshal(map[string]string{"displayName": displayName})
+	if err != nil {
+		return nil, fmt.Errorf("序列化创建联系人文件夹请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/contactFolders"
+	if strings.TrimSpace(parentID) != "" {
+		endpoint = graphBaseURL + "/me/contactFolders/" + url.PathEscape(parentID) + "/childFolders"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("创建联系人文件夹请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 创建联系人文件夹失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 创建联系人文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var folder ContactFolder
+	if err := json.NewDecoder(resp.Body).Decode(&folder); err != nil {
+		return nil, fmt.Errorf("解析创建联系人文件夹响应失败: %w", err)
+	}
+	return &folder, nil
+}
+
+// DeleteContactFolder 删除联系人文件夹。
+func DeleteContactFolder(ctx context.Context, accessToken, folderID string) error {
+	folderID = strings.TrimSpace(folderID)
+	if folderID == "" {
+		return fmt.Errorf("联系人文件夹 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/contactFolders/" + url.PathEscape(folderID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建删除联系人文件夹请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 删除联系人文件夹失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 删除联系人文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// ResolveContactFolderID 按显示名称查找联系人文件夹 ID。
+func ResolveContactFolderID(ctx context.Context, accessToken, target string) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", fmt.Errorf("联系人文件夹名称不能为空")
+	}
+	folders, err := ListContactFolders(ctx, accessToken, 200)
+	if err != nil {
+		return "", err
+	}
+	for _, folder := range folders {
+		if strings.EqualFold(folder.DisplayName, target) {
+			return folder.ID, nil
+		}
+	}
+	return target, nil
 }
