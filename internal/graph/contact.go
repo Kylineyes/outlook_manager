@@ -199,3 +199,49 @@ func DeleteContact(ctx context.Context, accessToken, contactID string) error {
 	}
 	return nil
 }
+
+// SearchContacts 按显示名称前缀搜索联系人。
+func SearchContacts(ctx context.Context, accessToken, query string, top int) ([]Contact, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, fmt.Errorf("搜索关键字不能为空")
+	}
+	if top <= 0 {
+		top = 20
+	}
+	if top > 200 {
+		top = 200
+	}
+
+	escaped := strings.ReplaceAll(query, "'", "''")
+	filter := fmt.Sprintf("startswith(displayName,'%s')", escaped)
+	values := url.Values{}
+	values.Set("$filter", filter)
+	values.Set("$top", strconv.Itoa(top))
+	values.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones")
+	values.Set("$orderby", "displayName")
+	endpoint := graphBaseURL + "/me/contacts?" + values.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建联系人搜索请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 联系人搜索失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 联系人搜索返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result struct {
+		Value []Contact `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 Graph 联系人搜索失败: %w", err)
+	}
+	return result.Value, nil
+}

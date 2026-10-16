@@ -205,27 +205,31 @@ type contactsListArgs struct {
 
 // calendarCreateArgs 是 calendar_create tool 的输入参数。
 type calendarCreateArgs struct {
-	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Subject  string `json:"subject" jsonschema:"事件主题"`
-	Start    string `json:"start" jsonschema:"开始时间，RFC3339 或 2006-01-02 15:04:05"`
-	End      string `json:"end" jsonschema:"结束时间，RFC3339 或 2006-01-02 15:04:05"`
-	Body     string `json:"body,omitempty" jsonschema:"事件正文"`
-	Location string `json:"location,omitempty" jsonschema:"事件地点"`
-	TimeZone string `json:"timeZone,omitempty" jsonschema:"时区，默认 UTC"`
-	IsAllDay bool   `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
+	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Subject         string   `json:"subject" jsonschema:"事件主题"`
+	Start           string   `json:"start" jsonschema:"开始时间，RFC3339 或 2006-01-02 15:04:05"`
+	End             string   `json:"end" jsonschema:"结束时间，RFC3339 或 2006-01-02 15:04:05"`
+	Body            string   `json:"body,omitempty" jsonschema:"事件正文"`
+	Location        string   `json:"location,omitempty" jsonschema:"事件地点"`
+	TimeZone        string   `json:"timeZone,omitempty" jsonschema:"时区，默认 UTC"`
+	IsAllDay        bool     `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
+	Attendees       []string `json:"attendees,omitempty" jsonschema:"参与人邮箱列表"`
+	ReminderMinutes int      `json:"reminderMinutes,omitempty" jsonschema:"提前多少分钟提醒"`
 }
 
 // calendarUpdateArgs 是 calendar_update tool 的输入参数。
 type calendarUpdateArgs struct {
-	ID       string `json:"id" jsonschema:"事件 ID"`
-	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Subject  string `json:"subject" jsonschema:"事件主题"`
-	Start    string `json:"start" jsonschema:"开始时间"`
-	End      string `json:"end" jsonschema:"结束时间"`
-	Body     string `json:"body,omitempty" jsonschema:"事件正文"`
-	Location string `json:"location,omitempty" jsonschema:"事件地点"`
-	TimeZone string `json:"timeZone,omitempty" jsonschema:"时区，默认 UTC"`
-	IsAllDay bool   `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
+	ID              string   `json:"id" jsonschema:"事件 ID"`
+	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Subject         string   `json:"subject" jsonschema:"事件主题"`
+	Start           string   `json:"start" jsonschema:"开始时间"`
+	End             string   `json:"end" jsonschema:"结束时间"`
+	Body            string   `json:"body,omitempty" jsonschema:"事件正文"`
+	Location        string   `json:"location,omitempty" jsonschema:"事件地点"`
+	TimeZone        string   `json:"timeZone,omitempty" jsonschema:"时区，默认 UTC"`
+	IsAllDay        bool     `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
+	Attendees       []string `json:"attendees,omitempty" jsonschema:"参与人邮箱列表"`
+	ReminderMinutes int      `json:"reminderMinutes,omitempty" jsonschema:"提前多少分钟提醒"`
 }
 
 // calendarDeleteArgs 是 calendar_delete tool 的输入参数。
@@ -265,6 +269,13 @@ type contactsUpdateArgs struct {
 type contactsDeleteArgs struct {
 	ID      string `json:"id" jsonschema:"联系人 ID"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsSearchArgs 是 contacts_search tool 的输入参数。
+type contactsSearchArgs struct {
+	Query   string `json:"query" jsonschema:"搜索关键字，按显示名称前缀匹配"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个联系人，默认 20，最大 200"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -470,6 +481,11 @@ func main() {
 		Name:        "contacts_delete",
 		Description: "删除联系人",
 	}, contactsDeleteHandler)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_search",
+		Description: "按显示名称前缀搜索联系人",
+	}, contactsSearchHandler)
+
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
 	}
@@ -1540,13 +1556,15 @@ func calendarCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		return nil, nil, err
 	}
 	event, err := graph.CreateCalendarEvent(ctx, loginResult.AccessToken, graph.CalendarEventInput{
-		Subject:  args.Subject,
-		Body:     args.Body,
-		Start:    start,
-		End:      end,
-		TimeZone: args.TimeZone,
-		Location: args.Location,
-		IsAllDay: args.IsAllDay,
+		Subject:                    args.Subject,
+		Body:                       args.Body,
+		Start:                      start,
+		End:                        end,
+		TimeZone:                   args.TimeZone,
+		Location:                   args.Location,
+		IsAllDay:                   args.IsAllDay,
+		Attendees:                  args.Attendees,
+		ReminderMinutesBeforeStart: args.ReminderMinutes,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1591,13 +1609,15 @@ func calendarUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		return nil, nil, err
 	}
 	event, err := graph.UpdateCalendarEvent(ctx, loginResult.AccessToken, args.ID, graph.CalendarEventInput{
-		Subject:  args.Subject,
-		Body:     args.Body,
-		Start:    start,
-		End:      end,
-		TimeZone: args.TimeZone,
-		Location: args.Location,
-		IsAllDay: args.IsAllDay,
+		Subject:                    args.Subject,
+		Body:                       args.Body,
+		Start:                      start,
+		End:                        end,
+		TimeZone:                   args.TimeZone,
+		Location:                   args.Location,
+		IsAllDay:                   args.IsAllDay,
+		Attendees:                  args.Attendees,
+		ReminderMinutesBeforeStart: args.ReminderMinutes,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1766,6 +1786,40 @@ func contactsDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		"success":   true,
 		"account":   selected.Username,
 		"contactId": args.ID,
+	})
+}
+
+// contactsSearchHandler 按显示名称前缀搜索联系人。
+func contactsSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsSearchArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Query) == "" {
+		return nil, nil, fmt.Errorf("搜索关键字不能为空")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	contacts, err := graph.SearchContacts(ctx, loginResult.AccessToken, args.Query, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account":  selected.Username,
+		"contacts": contacts,
 	})
 }
 

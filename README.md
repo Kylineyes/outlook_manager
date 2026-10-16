@@ -25,8 +25,10 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件类别查看、添加、移除
 - 日历事件读取
 - 日历事件创建、更新、删除
+- 日历参与人与提醒
 - 联系人读取
 - 联系人创建、更新、删除
+- 联系人搜索
 - 草稿创建、列表、发送
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
@@ -87,9 +89,11 @@ outlookctl mail category-add <message-id> --category "名称"
 outlookctl mail category-remove <message-id> --category "名称"
 outlookctl calendar list --days 7
 outlookctl calendar create --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
+outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --attendees someone@example.com --reminder-minutes 10
 outlookctl calendar update --id <事件ID> --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar delete --id <事件ID>
 outlookctl contacts list --top 20
+outlookctl contacts search --query "张"
 outlookctl contacts create --display-name "名称" --email someone@example.com
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
@@ -135,6 +139,7 @@ outlookctl mail importance <message-id> --level high
 - `contacts_create`
 - `contacts_update`
 - `contacts_delete`
+- `contacts_search`
 - `mail_reply`
 - `mail_reply_all`
 - `mail_forward`

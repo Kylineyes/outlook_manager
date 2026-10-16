@@ -89,13 +89,15 @@ func ListCalendarEvents(ctx context.Context, accessToken string, start, end time
 
 // CalendarEventInput 是创建或更新日历事件的输入。
 type CalendarEventInput struct {
-	Subject  string
-	Body     string
-	Start    time.Time
-	End      time.Time
-	TimeZone string
-	Location string
-	IsAllDay bool
+	Subject                    string
+	Body                       string
+	Start                      time.Time
+	End                        time.Time
+	TimeZone                   string
+	Location                   string
+	IsAllDay                   bool
+	Attendees                  []string
+	ReminderMinutesBeforeStart int
 }
 
 // buildCalendarEventPayload 构造 Graph 日历事件请求体。
@@ -127,6 +129,26 @@ func buildCalendarEventPayload(input CalendarEventInput) map[string]any {
 			"timeZone": timeZone,
 		},
 		"isAllDay": input.IsAllDay,
+	}
+	if len(input.Attendees) > 0 {
+		attendees := make([]map[string]any, 0, len(input.Attendees))
+		for _, email := range input.Attendees {
+			email = strings.TrimSpace(email)
+			if email == "" {
+				continue
+			}
+			attendees = append(attendees, map[string]any{
+				"emailAddress": map[string]string{"address": email},
+				"type":         "required",
+			})
+		}
+		if len(attendees) > 0 {
+			payload["attendees"] = attendees
+		}
+	}
+	if input.ReminderMinutesBeforeStart > 0 {
+		payload["isReminderOn"] = true
+		payload["reminderMinutesBeforeStart"] = input.ReminderMinutesBeforeStart
 	}
 	if strings.TrimSpace(input.Location) != "" {
 		payload["location"] = map[string]string{"displayName": input.Location}

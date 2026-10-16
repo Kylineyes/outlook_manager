@@ -1764,6 +1764,8 @@ func runContacts(args []string) error {
 	switch args[0] {
 	case "list":
 		return runContactsList(args[1:])
+	case "search":
+		return runContactsSearch(args[1:])
 	case "create":
 		return runContactsCreate(args[1:])
 	case "update":
@@ -1862,6 +1864,8 @@ func runCalendarCreate(args []string) error {
 	locationFlag := fs.String("location", "", "事件地点")
 	timezoneFlag := fs.String("timezone", "UTC", "时区，例如 UTC 或 China Standard Time")
 	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
+	attendeesFlag := fs.String("attendees", "", "参与人邮箱，多个用逗号分隔")
+	reminderFlag := fs.Int("reminder-minutes", 0, "提前多少分钟提醒，0 表示使用服务端默认")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1896,13 +1900,15 @@ func runCalendarCreate(args []string) error {
 		return err
 	}
 	event, err := graph.CreateCalendarEvent(ctx, loginResult.AccessToken, graph.CalendarEventInput{
-		Subject:  *subjectFlag,
-		Body:     *bodyFlag,
-		Start:    start,
-		End:      end,
-		TimeZone: *timezoneFlag,
-		Location: *locationFlag,
-		IsAllDay: *allDayFlag,
+		Subject:                    *subjectFlag,
+		Body:                       *bodyFlag,
+		Start:                      start,
+		End:                        end,
+		TimeZone:                   *timezoneFlag,
+		Location:                   *locationFlag,
+		IsAllDay:                   *allDayFlag,
+		Attendees:                  splitAddresses(*attendeesFlag),
+		ReminderMinutesBeforeStart: *reminderFlag,
 	})
 	if err != nil {
 		return err
@@ -1926,6 +1932,8 @@ func runCalendarUpdate(args []string) error {
 	locationFlag := fs.String("location", "", "事件地点")
 	timezoneFlag := fs.String("timezone", "UTC", "时区")
 	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
+	attendeesFlag := fs.String("attendees", "", "参与人邮箱，多个用逗号分隔")
+	reminderFlag := fs.Int("reminder-minutes", 0, "提前多少分钟提醒，0 表示使用服务端默认")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1960,13 +1968,15 @@ func runCalendarUpdate(args []string) error {
 		return err
 	}
 	event, err := graph.UpdateCalendarEvent(ctx, loginResult.AccessToken, *idFlag, graph.CalendarEventInput{
-		Subject:  *subjectFlag,
-		Body:     *bodyFlag,
-		Start:    start,
-		End:      end,
-		TimeZone: *timezoneFlag,
-		Location: *locationFlag,
-		IsAllDay: *allDayFlag,
+		Subject:                    *subjectFlag,
+		Body:                       *bodyFlag,
+		Start:                      start,
+		End:                        end,
+		TimeZone:                   *timezoneFlag,
+		Location:                   *locationFlag,
+		IsAllDay:                   *allDayFlag,
+		Attendees:                  splitAddresses(*attendeesFlag),
+		ReminderMinutesBeforeStart: *reminderFlag,
 	})
 	if err != nil {
 		return err
@@ -2175,6 +2185,64 @@ func runContactsDelete(args []string) error {
 	return nil
 }
 
+// runContactsSearch 按显示名称前缀搜索联系人。
+func runContactsSearch(args []string) error {
+	fs := flag.NewFlagSet("contacts search", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	queryFlag := fs.String("query", "", "搜索关键字，按显示名称前缀匹配")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 20, "最多返回多少个联系人，范围 1-200")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*queryFlag) == "" {
+		return errors.New("用法: outlookctl contacts search --query <关键字>")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	contacts, err := graph.SearchContacts(ctx, loginResult.AccessToken, *queryFlag, *topFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(contacts, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化联系人搜索结果失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "搜索关键字: %s\n", *queryFlag)
+	fmt.Fprintf(os.Stdout, "结果数量: %d\n", len(contacts))
+	for i, contact := range contacts {
+		email := ""
+		if len(contact.EmailAddresses) > 0 {
+			email = contact.EmailAddresses[0].Address
+		}
+		fmt.Fprintf(os.Stdout, "%2d. %s | %s | %s\n", i+1, contact.DisplayName, email, contact.CompanyName)
+	}
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2200,6 +2268,7 @@ func printUsage() {
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
   outlookctl calendar delete --id <事件ID>  删除事件
   outlookctl contacts list --top 50          查看联系人
+  outlookctl contacts search --query <关键字>  搜索联系人
   outlookctl contacts create --display-name <名称>  创建联系人
   outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
   outlookctl contacts delete --id <联系人ID>  删除联系人
