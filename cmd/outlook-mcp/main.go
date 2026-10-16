@@ -190,6 +190,19 @@ type mailCategoryArgs struct {
 	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// calendarListArgs 是 calendar_list tool 的输入参数。
+type calendarListArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Days    int    `json:"days,omitempty" jsonschema:"查询未来多少天，默认 7，最大 90"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少条事件，默认 50，最大 200"`
+}
+
+// contactsListArgs 是 contacts_list tool 的输入参数。
+type contactsListArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少个联系人，默认 50，最大 200"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -353,6 +366,16 @@ func main() {
 		Name:        "mail_mark_unread",
 		Description: "把指定邮件标记为未读",
 	}, mailMarkUnreadHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_list",
+		Description: "读取未来指定天数内的日历事件",
+	}, calendarListHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_list",
+		Description: "读取联系人列表",
+	}, contactsListHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -1297,6 +1320,79 @@ func changeMessageCategory(ctx context.Context, args mailCategoryArgs, add bool)
 		"account":    selected.Username,
 		"messageId":  args.ID,
 		"categories": categories,
+	})
+}
+
+// calendarListHandler 读取未来指定天数内的日历事件。
+func calendarListHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarListArgs) (*mcp.CallToolResult, any, error) {
+	days := args.Days
+	if days <= 0 {
+		days = 7
+	}
+	if days > 90 {
+		days = 90
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	start := time.Now().UTC()
+	end := start.AddDate(0, 0, days)
+	events, err := graph.ListCalendarEvents(ctx, loginResult.AccessToken, start, end, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account": selected.Username,
+		"events":  events,
+	})
+}
+
+// contactsListHandler 读取联系人列表。
+func contactsListHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsListArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	contacts, err := graph.ListContacts(ctx, loginResult.AccessToken, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account":  selected.Username,
+		"contacts": contacts,
 	})
 }
 

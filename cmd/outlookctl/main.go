@@ -43,6 +43,10 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
+	case "calendar":
+		return runCalendar(args[1:])
+	case "contacts":
+		return runContacts(args[1:])
 	case "auth":
 		return runAuth(args[1:])
 	case "account":
@@ -1661,6 +1665,161 @@ func runMailCategoryChange(args []string, add bool) error {
 	return nil
 }
 
+// runCalendar 处理 calendar 子命令。
+func runCalendar(args []string) error {
+	if len(args) == 0 {
+		printUsage()
+		return errors.New("calendar 需要指定子命令: list")
+	}
+	switch args[0] {
+	case "list":
+		return runCalendarList(args[1:])
+	default:
+		printUsage()
+		return fmt.Errorf("未知 calendar 子命令: %s", args[0])
+	}
+}
+
+// runCalendarList 读取指定天数范围内的日历事件。
+func runCalendarList(args []string) error {
+	fs := flag.NewFlagSet("calendar list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	daysFlag := fs.Int("days", 7, "查询未来多少天，范围 1-90")
+	topFlag := fs.Int("top", 50, "最多返回多少条事件，范围 1-200")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *daysFlag <= 0 {
+		*daysFlag = 7
+	}
+	if *daysFlag > 90 {
+		*daysFlag = 90
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+
+	start := time.Now().UTC()
+	end := start.AddDate(0, 0, *daysFlag)
+	events, err := graph.ListCalendarEvents(ctx, loginResult.AccessToken, start, end, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(events, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化日历事件失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "事件数量: %d\n", len(events))
+	for i, event := range events {
+		fmt.Fprintf(
+			os.Stdout,
+			"%2d. [%s] %s | 地点=%s\n",
+			i+1,
+			event.Start.DateTime,
+			event.Subject,
+			event.Location.DisplayName,
+		)
+	}
+	return nil
+}
+
+// runContacts 处理 contacts 子命令。
+func runContacts(args []string) error {
+	if len(args) == 0 {
+		printUsage()
+		return errors.New("contacts 需要指定子命令: list")
+	}
+	switch args[0] {
+	case "list":
+		return runContactsList(args[1:])
+	default:
+		printUsage()
+		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
+	}
+}
+
+// runContactsList 读取联系人列表。
+func runContactsList(args []string) error {
+	fs := flag.NewFlagSet("contacts list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	topFlag := fs.Int("top", 50, "最多返回多少个联系人，范围 1-200")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	contacts, err := graph.ListContacts(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+
+	if *jsonFlag {
+		data, err := json.MarshalIndent(contacts, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化联系人失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人数量: %d\n", len(contacts))
+	for i, contact := range contacts {
+		email := ""
+		if len(contact.EmailAddresses) > 0 {
+			email = contact.EmailAddresses[0].Address
+		}
+		fmt.Fprintf(os.Stdout, "%2d. %s | %s | %s\n", i+1, contact.DisplayName, email, contact.CompanyName)
+	}
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -1681,6 +1840,8 @@ func printUsage() {
   outlookctl mail delete <message-id>        删除邮件
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
+  outlookctl calendar list --days 7          查看未来日历事件
+  outlookctl contacts list --top 50          查看联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件

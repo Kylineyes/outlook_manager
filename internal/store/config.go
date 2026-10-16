@@ -29,7 +29,7 @@ const (
 
 // defaultScopes 是第一阶段需要的最小权限集合。
 // offline_access 用于获取 refresh token，确保登录状态可以本地持久化。
-var defaultScopes = []string{"User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send", "offline_access"}
+var defaultScopes = []string{"User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send", "Calendars.Read", "Contacts.Read", "offline_access"}
 
 // DefaultConfig 返回项目默认认证配置。
 func DefaultConfig() Config {
