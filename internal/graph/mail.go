@@ -42,11 +42,16 @@ type messageListResponse struct {
 }
 
 // ListInboxMessages 读取当前账号收件箱中的最新邮件。
-//
-// top 表示最多返回多少封邮件：
-//   - 小于等于 0 时使用默认值 10；
-//   - 大于 100 时会被限制为 100，避免单次请求过大。
 func ListInboxMessages(ctx context.Context, accessToken string, top int) ([]Message, error) {
+	return ListMessagesInFolder(ctx, accessToken, "inbox", top)
+}
+
+// ListMessagesInFolder 读取指定文件夹中的最新邮件。
+func ListMessagesInFolder(ctx context.Context, accessToken, folderID string, top int) ([]Message, error) {
+	folderID = strings.TrimSpace(folderID)
+	if folderID == "" {
+		folderID = "inbox"
+	}
 	if top <= 0 {
 		top = 10
 	}
@@ -58,7 +63,7 @@ func ListInboxMessages(ctx context.Context, accessToken string, top int) ([]Mess
 	query.Set("$top", strconv.Itoa(top))
 	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
 	query.Set("$orderby", "receivedDateTime desc")
-	endpoint := graphBaseURL + "/me/mailFolders/inbox/messages?" + query.Encode()
+	endpoint := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID) + "/messages?" + query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -87,6 +92,12 @@ func ListInboxMessages(ctx context.Context, accessToken string, top int) ([]Mess
 
 // SearchMessages 使用 Microsoft Graph $search 在全部邮箱文件夹中搜索邮件。
 func SearchMessages(ctx context.Context, accessToken, query string, top int) ([]Message, error) {
+	return SearchMessagesInFolder(ctx, accessToken, "", query, top)
+}
+
+// SearchMessagesInFolder 在指定文件夹中使用 $search 搜索邮件。
+// folderID 为空时搜索全部邮箱文件夹。
+func SearchMessagesInFolder(ctx context.Context, accessToken, folderID, query string, top int) ([]Message, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, fmt.Errorf("搜索关键字不能为空")
@@ -104,7 +115,11 @@ func SearchMessages(ctx context.Context, accessToken, query string, top int) ([]
 	values.Set("$search", `"`+escaped+`"`)
 	values.Set("$top", strconv.Itoa(top))
 	values.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
+
 	endpoint := graphBaseURL + "/me/messages?" + values.Encode()
+	if strings.TrimSpace(folderID) != "" {
+		endpoint = graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID) + "/messages?" + values.Encode()
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

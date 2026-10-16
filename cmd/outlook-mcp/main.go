@@ -31,6 +31,7 @@ type emptyArgs struct{}
 // mailListArgs 是 mail_list tool 的输入参数。
 type mailListArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Folder  string `json:"folder,omitempty" jsonschema:"文件夹名称或 ID；不填时使用收件箱"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
 }
 
@@ -44,6 +45,7 @@ type mailReadArgs struct {
 type mailSearchArgs struct {
 	Query   string `json:"query" jsonschema:"搜索关键字"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Folder  string `json:"folder,omitempty" jsonschema:"文件夹名称或 ID；不填时搜索全部文件夹"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
 }
 
@@ -426,7 +428,16 @@ func mailListHandler(ctx context.Context, req *mcp.CallToolRequest, args mailLis
 	if err != nil {
 		return nil, nil, err
 	}
-	messages, err := graph.ListInboxMessages(ctx, loginResult.AccessToken, args.Top)
+	var messages []graph.Message
+	if strings.TrimSpace(args.Folder) == "" {
+		messages, err = graph.ListInboxMessages(ctx, loginResult.AccessToken, args.Top)
+	} else {
+		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		messages, err = graph.ListMessagesInFolder(ctx, loginResult.AccessToken, folderID, args.Top)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -494,7 +505,16 @@ func mailSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args mailS
 	if err != nil {
 		return nil, nil, err
 	}
-	messages, err := graph.SearchMessages(ctx, loginResult.AccessToken, args.Query, args.Top)
+	var messages []graph.Message
+	if strings.TrimSpace(args.Folder) == "" {
+		messages, err = graph.SearchMessages(ctx, loginResult.AccessToken, args.Query, args.Top)
+	} else {
+		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		messages, err = graph.SearchMessagesInFolder(ctx, loginResult.AccessToken, folderID, args.Query, args.Top)
+	}
 	if err != nil {
 		return nil, nil, err
 	}

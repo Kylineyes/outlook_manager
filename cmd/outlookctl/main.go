@@ -304,11 +304,12 @@ func runMail(args []string) error {
 	}
 }
 
-// runMailList 读取当前账号收件箱最新邮件。
+// runMailList 读取当前账号收件箱或指定文件夹中的最新邮件。
 func runMailList(args []string) error {
 	fs := flag.NewFlagSet("mail list", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	folderFlag := fs.String("folder", "", "指定文件夹名称或 ID；不填时使用收件箱")
 	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
 	if err := fs.Parse(args); err != nil {
@@ -330,13 +331,21 @@ func runMailList(args []string) error {
 	if err != nil {
 		return err
 	}
-
-	// 先静默刷新一次，确保 access token 可用，并顺带验证 refresh token。
 	loginResult, err := client.AcquireTokenSilent(ctx, selected)
 	if err != nil {
 		return err
 	}
-	messages, err := graph.ListInboxMessages(ctx, loginResult.AccessToken, *topFlag)
+
+	var messages []graph.Message
+	if strings.TrimSpace(*folderFlag) == "" {
+		messages, err = graph.ListInboxMessages(ctx, loginResult.AccessToken, *topFlag)
+	} else {
+		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		messages, err = graph.ListMessagesInFolder(ctx, loginResult.AccessToken, folderID, *topFlag)
+	}
 	if err != nil {
 		return err
 	}
@@ -351,7 +360,10 @@ func runMailList(args []string) error {
 	}
 
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
-	fmt.Fprintf(os.Stdout, "收件箱最新 %d 封邮件:\n", len(messages))
+	if strings.TrimSpace(*folderFlag) != "" {
+		fmt.Fprintf(os.Stdout, "文件夹: %s\n", *folderFlag)
+	}
+	fmt.Fprintf(os.Stdout, "邮件数量: %d\n", len(messages))
 	for i, message := range messages {
 		readState := "未读"
 		if message.IsRead {
@@ -470,12 +482,13 @@ func runMailRead(args []string) error {
 	return nil
 }
 
-// runMailSearch 在全部邮箱文件夹中搜索邮件。
+// runMailSearch 在全部邮箱文件夹或指定文件夹中搜索邮件。
 func runMailSearch(args []string) error {
 	fs := flag.NewFlagSet("mail search", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	queryFlag := fs.String("query", "", "搜索关键字")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	folderFlag := fs.String("folder", "", "指定文件夹名称或 ID；不填时搜索全部文件夹")
 	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
 	if err := fs.Parse(args); err != nil {
@@ -504,7 +517,17 @@ func runMailSearch(args []string) error {
 	if err != nil {
 		return err
 	}
-	messages, err := graph.SearchMessages(ctx, loginResult.AccessToken, *queryFlag, *topFlag)
+
+	var messages []graph.Message
+	if strings.TrimSpace(*folderFlag) == "" {
+		messages, err = graph.SearchMessages(ctx, loginResult.AccessToken, *queryFlag, *topFlag)
+	} else {
+		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		messages, err = graph.SearchMessagesInFolder(ctx, loginResult.AccessToken, folderID, *queryFlag, *topFlag)
+	}
 	if err != nil {
 		return err
 	}
