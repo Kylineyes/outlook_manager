@@ -1882,6 +1882,10 @@ func runCalendarCreate(args []string) error {
 	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
 	attendeesFlag := fs.String("attendees", "", "参与人邮箱，多个用逗号分隔")
 	reminderFlag := fs.Int("reminder-minutes", 0, "提前多少分钟提醒，0 表示使用服务端默认")
+	repeatFlag := fs.String("repeat", "", "重复类型: daily/weekly/monthly/yearly")
+	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
+	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
+	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1925,6 +1929,10 @@ func runCalendarCreate(args []string) error {
 		IsAllDay:                   *allDayFlag,
 		Attendees:                  splitAddresses(*attendeesFlag),
 		ReminderMinutesBeforeStart: *reminderFlag,
+		RepeatType:                 *repeatFlag,
+		RepeatInterval:             *repeatIntervalFlag,
+		RepeatCount:                *repeatCountFlag,
+		RepeatUntil:                *repeatUntilFlag,
 	})
 	if err != nil {
 		return err
@@ -1950,6 +1958,10 @@ func runCalendarUpdate(args []string) error {
 	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
 	attendeesFlag := fs.String("attendees", "", "参与人邮箱，多个用逗号分隔")
 	reminderFlag := fs.Int("reminder-minutes", 0, "提前多少分钟提醒，0 表示使用服务端默认")
+	repeatFlag := fs.String("repeat", "", "重复类型: daily/weekly/monthly/yearly")
+	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
+	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
+	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1993,6 +2005,10 @@ func runCalendarUpdate(args []string) error {
 		IsAllDay:                   *allDayFlag,
 		Attendees:                  splitAddresses(*attendeesFlag),
 		ReminderMinutesBeforeStart: *reminderFlag,
+		RepeatType:                 *repeatFlag,
+		RepeatInterval:             *repeatIntervalFlag,
+		RepeatCount:                *repeatCountFlag,
+		RepeatUntil:                *repeatUntilFlag,
 	})
 	if err != nil {
 		return err
@@ -2047,6 +2063,7 @@ func runContactsCreate(args []string) error {
 	fs := flag.NewFlagSet("contacts create", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
 	displayNameFlag := fs.String("display-name", "", "显示名称")
 	givenNameFlag := fs.String("given-name", "", "名")
 	surnameFlag := fs.String("surname", "", "姓")
@@ -2092,7 +2109,16 @@ func runContactsCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	contact, err := graph.CreateContact(ctx, loginResult.AccessToken, input)
+	var contact *graph.Contact
+	if strings.TrimSpace(*folderFlag) == "" {
+		contact, err = graph.CreateContact(ctx, loginResult.AccessToken, input)
+	} else {
+		folderID, resolveErr := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		contact, err = graph.CreateContactInFolder(ctx, loginResult.AccessToken, folderID, input)
+	}
 	if err != nil {
 		return err
 	}

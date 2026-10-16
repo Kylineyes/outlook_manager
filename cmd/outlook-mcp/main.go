@@ -216,6 +216,10 @@ type calendarCreateArgs struct {
 	IsAllDay        bool     `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
 	Attendees       []string `json:"attendees,omitempty" jsonschema:"参与人邮箱列表"`
 	ReminderMinutes int      `json:"reminderMinutes,omitempty" jsonschema:"提前多少分钟提醒"`
+	RepeatType      string   `json:"repeatType,omitempty" jsonschema:"重复类型: daily/weekly/monthly/yearly"`
+	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
+	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
+	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
 }
 
 // calendarUpdateArgs 是 calendar_update tool 的输入参数。
@@ -231,6 +235,10 @@ type calendarUpdateArgs struct {
 	IsAllDay        bool     `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
 	Attendees       []string `json:"attendees,omitempty" jsonschema:"参与人邮箱列表"`
 	ReminderMinutes int      `json:"reminderMinutes,omitempty" jsonschema:"提前多少分钟提醒"`
+	RepeatType      string   `json:"repeatType,omitempty" jsonschema:"重复类型: daily/weekly/monthly/yearly"`
+	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
+	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
+	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
 }
 
 // calendarDeleteArgs 是 calendar_delete tool 的输入参数。
@@ -242,6 +250,7 @@ type calendarDeleteArgs struct {
 // contactsCreateArgs 是 contacts_create tool 的输入参数。
 type contactsCreateArgs struct {
 	Account        string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Folder         string   `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
 	DisplayName    string   `json:"displayName" jsonschema:"显示名称"`
 	GivenName      string   `json:"givenName,omitempty" jsonschema:"名"`
 	Surname        string   `json:"surname,omitempty" jsonschema:"姓"`
@@ -1608,6 +1617,10 @@ func calendarCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		IsAllDay:                   args.IsAllDay,
 		Attendees:                  args.Attendees,
 		ReminderMinutesBeforeStart: args.ReminderMinutes,
+		RepeatType:                 args.RepeatType,
+		RepeatInterval:             args.RepeatInterval,
+		RepeatCount:                args.RepeatCount,
+		RepeatUntil:                args.RepeatUntil,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1661,6 +1674,10 @@ func calendarUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		IsAllDay:                   args.IsAllDay,
 		Attendees:                  args.Attendees,
 		ReminderMinutesBeforeStart: args.ReminderMinutes,
+		RepeatType:                 args.RepeatType,
+		RepeatInterval:             args.RepeatInterval,
+		RepeatCount:                args.RepeatCount,
+		RepeatUntil:                args.RepeatUntil,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1741,7 +1758,16 @@ func contactsCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 	if err != nil {
 		return nil, nil, err
 	}
-	contact, err := graph.CreateContact(ctx, loginResult.AccessToken, input)
+	var contact *graph.Contact
+	if strings.TrimSpace(args.Folder) == "" {
+		contact, err = graph.CreateContact(ctx, loginResult.AccessToken, input)
+	} else {
+		folderID, resolveErr := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, args.Folder)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		contact, err = graph.CreateContactInFolder(ctx, loginResult.AccessToken, folderID, input)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
