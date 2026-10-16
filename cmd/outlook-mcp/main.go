@@ -216,6 +216,10 @@ type calendarCreateArgs struct {
 	IsAllDay        bool     `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
 	Attendees       []string `json:"attendees,omitempty" jsonschema:"参与人邮箱列表"`
 	ReminderMinutes int      `json:"reminderMinutes,omitempty" jsonschema:"提前多少分钟提醒"`
+	RepeatType      string   `json:"repeatType,omitempty" jsonschema:"重复类型: daily/weekly/monthly/yearly"`
+	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
+	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
+	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
 }
 
 // calendarUpdateArgs 是 calendar_update tool 的输入参数。
@@ -231,6 +235,10 @@ type calendarUpdateArgs struct {
 	IsAllDay        bool     `json:"isAllDay,omitempty" jsonschema:"是否全天事件"`
 	Attendees       []string `json:"attendees,omitempty" jsonschema:"参与人邮箱列表"`
 	ReminderMinutes int      `json:"reminderMinutes,omitempty" jsonschema:"提前多少分钟提醒"`
+	RepeatType      string   `json:"repeatType,omitempty" jsonschema:"重复类型: daily/weekly/monthly/yearly"`
+	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
+	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
+	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
 }
 
 // calendarDeleteArgs 是 calendar_delete tool 的输入参数。
@@ -1609,6 +1617,10 @@ func calendarCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		IsAllDay:                   args.IsAllDay,
 		Attendees:                  args.Attendees,
 		ReminderMinutesBeforeStart: args.ReminderMinutes,
+		RepeatType:                 args.RepeatType,
+		RepeatInterval:             args.RepeatInterval,
+		RepeatCount:                args.RepeatCount,
+		RepeatUntil:                args.RepeatUntil,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1662,6 +1674,10 @@ func calendarUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		IsAllDay:                   args.IsAllDay,
 		Attendees:                  args.Attendees,
 		ReminderMinutesBeforeStart: args.ReminderMinutes,
+		RepeatType:                 args.RepeatType,
+		RepeatInterval:             args.RepeatInterval,
+		RepeatCount:                args.RepeatCount,
+		RepeatUntil:                args.RepeatUntil,
 	})
 	if err != nil {
 		return nil, nil, err

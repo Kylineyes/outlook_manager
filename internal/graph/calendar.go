@@ -98,10 +98,14 @@ type CalendarEventInput struct {
 	IsAllDay                   bool
 	Attendees                  []string
 	ReminderMinutesBeforeStart int
+	RepeatType                 string
+	RepeatInterval             int
+	RepeatCount                int
+	RepeatUntil                string
 }
 
 // buildCalendarEventPayload 构造 Graph 日历事件请求体。
-func buildCalendarEventPayload(input CalendarEventInput) map[string]any {
+func buildCalendarEventPayload(input CalendarEventInput) (map[string]any, error) {
 	timeZone := strings.TrimSpace(input.TimeZone)
 	if timeZone == "" {
 		timeZone = "UTC"
@@ -130,6 +134,9 @@ func buildCalendarEventPayload(input CalendarEventInput) map[string]any {
 		},
 		"isAllDay": input.IsAllDay,
 	}
+	if strings.TrimSpace(input.Location) != "" {
+		payload["location"] = map[string]string{"displayName": input.Location}
+	}
 	if len(input.Attendees) > 0 {
 		attendees := make([]map[string]any, 0, len(input.Attendees))
 		for _, email := range input.Attendees {
@@ -150,15 +157,79 @@ func buildCalendarEventPayload(input CalendarEventInput) map[string]any {
 		payload["isReminderOn"] = true
 		payload["reminderMinutesBeforeStart"] = input.ReminderMinutesBeforeStart
 	}
-	if strings.TrimSpace(input.Location) != "" {
-		payload["location"] = map[string]string{"displayName": input.Location}
+	if strings.TrimSpace(input.RepeatType) != "" {
+		repeatType := strings.ToLower(strings.TrimSpace(input.RepeatType))
+		switch repeatType {
+		case "daily", "weekly", "monthly", "yearly":
+		default:
+			return nil, fmt.Errorf("不支持的重复类型: %s", input.RepeatType)
+		}
+		interval := input.RepeatInterval
+		if interval <= 0 {
+			interval = 1
+		}
+		pattern := map[string]any{
+			"type":     repeatType,
+			"interval": interval,
+		}
+		switch repeatType {
+		case "weekly":
+			pattern["daysOfWeek"] = []string{weekdayName(start.Weekday())}
+		case "monthly":
+			pattern["dayOfMonth"] = start.Day()
+		case "yearly":
+			pattern["month"] = int(start.Month())
+			pattern["dayOfMonth"] = start.Day()
+		}
+		recurrenceRange := map[string]any{
+			"startDate": start.Format("2006-01-02"),
+		}
+		if input.RepeatCount > 0 {
+			recurrenceRange["type"] = "numbered"
+			recurrenceRange["numberOfOccurrences"] = input.RepeatCount
+		} else {
+			recurrenceRange["type"] = "endDate"
+			if strings.TrimSpace(input.RepeatUntil) != "" {
+				recurrenceRange["endDate"] = strings.TrimSpace(input.RepeatUntil)
+			} else {
+				recurrenceRange["endDate"] = start.AddDate(0, 0, 90).Format("2006-01-02")
+			}
+		}
+		payload["recurrence"] = map[string]any{
+			"pattern": pattern,
+			"range":   recurrenceRange,
+		}
 	}
-	return payload
+	return payload, nil
+}
+
+// weekdayName 把 Go 的 time.Weekday 转换为 Graph 需要的星期名称。
+func weekdayName(day time.Weekday) string {
+	switch day {
+	case time.Sunday:
+		return "sunday"
+	case time.Monday:
+		return "monday"
+	case time.Tuesday:
+		return "tuesday"
+	case time.Wednesday:
+		return "wednesday"
+	case time.Thursday:
+		return "thursday"
+	case time.Friday:
+		return "friday"
+	default:
+		return "saturday"
+	}
 }
 
 // CreateCalendarEvent 创建日历事件。
 func CreateCalendarEvent(ctx context.Context, accessToken string, input CalendarEventInput) (*CalendarEvent, error) {
-	data, err := json.Marshal(buildCalendarEventPayload(input))
+	payload, err := buildCalendarEventPayload(input)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("序列化创建日历事件请求失败: %w", err)
 	}
@@ -192,7 +263,11 @@ func UpdateCalendarEvent(ctx context.Context, accessToken, eventID string, input
 	if eventID == "" {
 		return nil, fmt.Errorf("事件 ID 不能为空")
 	}
-	data, err := json.Marshal(buildCalendarEventPayload(input))
+	payload, err := buildCalendarEventPayload(input)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("序列化更新日历事件请求失败: %w", err)
 	}

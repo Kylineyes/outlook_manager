@@ -1882,6 +1882,10 @@ func runCalendarCreate(args []string) error {
 	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
 	attendeesFlag := fs.String("attendees", "", "参与人邮箱，多个用逗号分隔")
 	reminderFlag := fs.Int("reminder-minutes", 0, "提前多少分钟提醒，0 表示使用服务端默认")
+	repeatFlag := fs.String("repeat", "", "重复类型: daily/weekly/monthly/yearly")
+	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
+	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
+	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1925,6 +1929,10 @@ func runCalendarCreate(args []string) error {
 		IsAllDay:                   *allDayFlag,
 		Attendees:                  splitAddresses(*attendeesFlag),
 		ReminderMinutesBeforeStart: *reminderFlag,
+		RepeatType:                 *repeatFlag,
+		RepeatInterval:             *repeatIntervalFlag,
+		RepeatCount:                *repeatCountFlag,
+		RepeatUntil:                *repeatUntilFlag,
 	})
 	if err != nil {
 		return err
@@ -1950,6 +1958,10 @@ func runCalendarUpdate(args []string) error {
 	allDayFlag := fs.Bool("all-day", false, "是否为全天事件")
 	attendeesFlag := fs.String("attendees", "", "参与人邮箱，多个用逗号分隔")
 	reminderFlag := fs.Int("reminder-minutes", 0, "提前多少分钟提醒，0 表示使用服务端默认")
+	repeatFlag := fs.String("repeat", "", "重复类型: daily/weekly/monthly/yearly")
+	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
+	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
+	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1993,6 +2005,10 @@ func runCalendarUpdate(args []string) error {
 		IsAllDay:                   *allDayFlag,
 		Attendees:                  splitAddresses(*attendeesFlag),
 		ReminderMinutesBeforeStart: *reminderFlag,
+		RepeatType:                 *repeatFlag,
+		RepeatInterval:             *repeatIntervalFlag,
+		RepeatCount:                *repeatCountFlag,
+		RepeatUntil:                *repeatUntilFlag,
 	})
 	if err != nil {
 		return err
