@@ -22,6 +22,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件删除（移动到已删除邮件）
 - 邮件附件列表
 - 邮件附件下载
+- 邮件发送附件
 - 邮件类别查看、添加、移除
 - 收件箱规则管理
 - 主类别管理
@@ -82,6 +83,7 @@ outlookctl mail list --top 10
 outlookctl mail read <message-id>
 outlookctl mail search --query "关键字"
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文"
+outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail mark-read <message-id>
 outlookctl mail mark-unread <message-id>
 outlookctl mail folders
@@ -118,6 +120,7 @@ outlookctl mail reply <message-id> --body "回复内容"
 outlookctl mail reply-all <message-id> --body "回复内容"
 outlookctl mail forward <message-id> --to someone@example.com --body "转发内容"
 outlookctl mail draft-create --to someone@example.com --subject "主题" --body "正文"
+outlookctl mail draft-create --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail drafts
 outlookctl mail draft-send <draft-id>
 outlookctl mail folder-create --name "新文件夹"
