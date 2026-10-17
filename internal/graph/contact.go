@@ -382,3 +382,57 @@ func ResolveContactFolderID(ctx context.Context, accessToken, target string) (st
 	}
 	return target, nil
 }
+
+// GetContact 读取单个联系人的完整信息。
+func GetContact(ctx context.Context, accessToken, contactID string) (*Contact, error) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return nil, fmt.Errorf("联系人 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/contacts/" + url.PathEscape(contactID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建联系人详情请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 联系人详情失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 联系人详情返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var contact Contact
+	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
+		return nil, fmt.Errorf("解析 Graph 联系人详情失败: %w", err)
+	}
+	return &contact, nil
+}
+
+// MoveContact 把联系人移动到指定联系人文件夹。
+// Graph 没有直接移动联系人的接口，因此这里使用复制到目标文件夹再删除原联系人的方式。
+func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderID string) (*Contact, error) {
+	contact, err := GetContact(ctx, accessToken, contactID)
+	if err != nil {
+		return nil, err
+	}
+	input := ContactInput{
+		DisplayName:    contact.DisplayName,
+		CompanyName:    contact.CompanyName,
+		JobTitle:       contact.JobTitle,
+		MobilePhone:    contact.MobilePhone,
+		EmailAddresses: contact.EmailAddresses,
+		BusinessPhones: contact.BusinessPhones,
+	}
+	moved, err := CreateContactInFolder(ctx, accessToken, destinationFolderID, input)
+	if err != nil {
+		return nil, err
+	}
+	if err := DeleteContact(ctx, accessToken, contactID); err != nil {
+		return nil, fmt.Errorf("联系人已复制到目标文件夹，但删除原联系人失败: %w", err)
+	}
+	return moved, nil
+}

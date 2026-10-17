@@ -1804,6 +1804,8 @@ func runContacts(args []string) error {
 		return runContactsUpdate(args[1:])
 	case "delete":
 		return runContactsDelete(args[1:])
+	case "move":
+		return runContactsMove(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
@@ -2721,6 +2723,51 @@ func runMailMasterCategoryDelete(args []string) error {
 	return nil
 }
 
+// runContactsMove 把联系人移动到指定文件夹。
+func runContactsMove(args []string) error {
+	fs := flag.NewFlagSet("contacts move", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "联系人 ID")
+	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*folderFlag) == "" {
+		return errors.New("用法: outlookctl contacts move --id <联系人ID> --folder <文件夹>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID, err := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+	if err != nil {
+		return err
+	}
+	moved, err := graph.MoveContact(ctx, loginResult.AccessToken, *idFlag, folderID)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已移动: %s\n", moved.DisplayName)
+	fmt.Fprintf(os.Stdout, "新联系人 ID: %s\n", moved.ID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2753,6 +2800,7 @@ func printUsage() {
   outlookctl contacts create --display-name <名称>  创建联系人
   outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
   outlookctl contacts delete --id <联系人ID>  删除联系人
+  outlookctl contacts move --id <联系人ID> --folder <文件夹>  移动联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件
