@@ -59,6 +59,7 @@ type mailSendArgs struct {
 	IsHTML          bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
 	SaveToSentItems bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
 	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments     []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 }
 
 // mailMarkArgs 是 mail_mark_read / mail_mark_unread tool 的输入参数。
@@ -123,13 +124,14 @@ type mailForwardArgs struct {
 
 // mailDraftCreateArgs 是 mail_draft_create tool 的输入参数。
 type mailDraftCreateArgs struct {
-	To      []string `json:"to" jsonschema:"收件人邮箱列表"`
-	Cc      []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
-	Bcc     []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
-	Subject string   `json:"subject" jsonschema:"邮件主题"`
-	Body    string   `json:"body" jsonschema:"邮件正文"`
-	IsHTML  bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
-	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	To          []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc          []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc         []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject     string   `json:"subject" jsonschema:"邮件主题"`
+	Body        string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML      bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	Account     string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 }
 
 // mailDraftsArgs 是 mail_drafts_list tool 的输入参数。
@@ -800,6 +802,11 @@ func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSen
 	if args.IsHTML {
 		contentType = "HTML"
 	}
+	attachments, err := graph.LoadMailAttachments(args.Attachments)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	input := graph.SendMailInput{
 		To:              args.To,
 		Cc:              args.Cc,
@@ -807,6 +814,7 @@ func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSen
 		Subject:         args.Subject,
 		Body:            args.Body,
 		ContentType:     contentType,
+		Attachments:     attachments,
 		SaveToSentItems: args.SaveToSentItems,
 	}
 	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
@@ -1176,6 +1184,11 @@ func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 	if args.IsHTML {
 		contentType = "HTML"
 	}
+	attachments, err := graph.LoadMailAttachments(args.Attachments)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, graph.SendMailInput{
 		To:          args.To,
 		Cc:          args.Cc,
@@ -1183,6 +1196,7 @@ func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 		Subject:     args.Subject,
 		Body:        args.Body,
 		ContentType: contentType,
+		Attachments: attachments,
 	})
 	if err != nil {
 		return nil, nil, err

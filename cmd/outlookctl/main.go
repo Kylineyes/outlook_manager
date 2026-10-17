@@ -592,6 +592,7 @@ func runMailSend(args []string) error {
 	subjectFlag := fs.String("subject", "", "邮件主题")
 	bodyFlag := fs.String("body", "", "邮件正文")
 	bodyFileFlag := fs.String("body-file", "", "从文件读取邮件正文")
+	attachFlag := fs.String("attach", "", "附件路径，多个用逗号分隔")
 	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	noSaveFlag := fs.Bool("no-save", false, "不保存到已发送邮件")
@@ -611,6 +612,11 @@ func runMailSend(args []string) error {
 			return fmt.Errorf("读取正文文件失败: %w", err)
 		}
 		body = string(data)
+	}
+
+	attachments, err := graph.LoadMailAttachments(splitAddresses(*attachFlag))
+	if err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -645,6 +651,7 @@ func runMailSend(args []string) error {
 		Body:            body,
 		ContentType:     contentType,
 		SaveToSentItems: !*noSaveFlag,
+		Attachments:     attachments,
 	}
 	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
 		return err
@@ -1161,6 +1168,7 @@ func runMailDraftCreate(args []string) error {
 	bccFlag := fs.String("bcc", "", "密送，多个地址用逗号分隔")
 	subjectFlag := fs.String("subject", "", "邮件主题")
 	bodyFlag := fs.String("body", "", "邮件正文")
+	attachFlag := fs.String("attach", "", "附件路径，多个用逗号分隔")
 	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	if err := fs.Parse(args); err != nil {
@@ -1170,6 +1178,11 @@ func runMailDraftCreate(args []string) error {
 	to := splitAddresses(*toFlag)
 	if len(to) == 0 {
 		return errors.New("用法: outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>")
+	}
+
+	attachments, err := graph.LoadMailAttachments(splitAddresses(*attachFlag))
+	if err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -1203,6 +1216,7 @@ func runMailDraftCreate(args []string) error {
 		Subject:     *subjectFlag,
 		Body:        *bodyFlag,
 		ContentType: contentType,
+		Attachments: attachments,
 	}
 	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, input)
 	if err != nil {

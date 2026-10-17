@@ -3,6 +3,7 @@ package graph
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ type SendMailInput struct {
 	Body            string
 	ContentType     string
 	SaveToSentItems bool
+	Attachments     []MailAttachmentInput
 }
 
 // buildMessage 把发送参数转换为 Microsoft Graph 邮件资源结构。
@@ -62,6 +64,27 @@ func buildMessage(input SendMailInput) (map[string]any, error) {
 	}
 	if len(ccRecipients) > 0 {
 		message["ccRecipients"] = ccRecipients
+	}
+	if len(input.Attachments) > 0 {
+		attachments := make([]map[string]any, 0, len(input.Attachments))
+		for _, attachment := range input.Attachments {
+			if strings.TrimSpace(attachment.Name) == "" || len(attachment.ContentBytes) == 0 {
+				continue
+			}
+			contentType := strings.TrimSpace(attachment.ContentType)
+			if contentType == "" {
+				contentType = "application/octet-stream"
+			}
+			attachments = append(attachments, map[string]any{
+				"@odata.type":  "#microsoft.graph.fileAttachment",
+				"name":         attachment.Name,
+				"contentType":  contentType,
+				"contentBytes": base64.StdEncoding.EncodeToString(attachment.ContentBytes),
+			})
+		}
+		if len(attachments) > 0 {
+			message["attachments"] = attachments
+		}
 	}
 	if len(bccRecipients) > 0 {
 		message["bccRecipients"] = bccRecipients
