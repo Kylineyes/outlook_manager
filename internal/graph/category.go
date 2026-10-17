@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -132,4 +133,67 @@ func RemoveMessageCategory(ctx context.Context, accessToken, messageID, category
 		return nil, err
 	}
 	return result, nil
+}
+
+// CreateMasterCategory 创建主类别。
+func CreateMasterCategory(ctx context.Context, accessToken, displayName, color string) (*Category, error) {
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return nil, fmt.Errorf("类别名称不能为空")
+	}
+	payload := map[string]string{"displayName": displayName}
+	if strings.TrimSpace(color) != "" {
+		payload["color"] = strings.TrimSpace(color)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化创建主类别请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/outlook/masterCategories"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("创建主类别请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 创建主类别失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 创建主类别返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var category Category
+	if err := json.NewDecoder(resp.Body).Decode(&category); err != nil {
+		return nil, fmt.Errorf("解析创建主类别响应失败: %w", err)
+	}
+	return &category, nil
+}
+
+// DeleteMasterCategory 删除主类别。
+func DeleteMasterCategory(ctx context.Context, accessToken, categoryID string) error {
+	categoryID = strings.TrimSpace(categoryID)
+	if categoryID == "" {
+		return fmt.Errorf("类别 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/outlook/masterCategories/" + url.PathEscape(categoryID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建删除主类别请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 删除主类别失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 删除主类别返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }

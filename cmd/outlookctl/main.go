@@ -302,6 +302,18 @@ func runMail(args []string) error {
 		return runMailCategoryAdd(args[1:])
 	case "category-remove":
 		return runMailCategoryRemove(args[1:])
+	case "rules":
+		return runMailRules(args[1:])
+	case "rule-create":
+		return runMailRuleCreate(args[1:])
+	case "rule-delete":
+		return runMailRuleDelete(args[1:])
+	case "master-categories":
+		return runMailMasterCategories(args[1:])
+	case "master-category-create":
+		return runMailMasterCategoryCreate(args[1:])
+	case "master-category-delete":
+		return runMailMasterCategoryDelete(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 mail 子命令: %s", args[0])
@@ -2412,6 +2424,289 @@ func runContactsFolderDelete(args []string) error {
 	return nil
 }
 
+// runMailRules 列收件箱规则。
+func runMailRules(args []string) error {
+	fs := flag.NewFlagSet("mail rules", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	rules, err := graph.ListMessageRules(ctx, loginResult.AccessToken)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(rules, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化收件箱规则失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "收件箱规则数量: %d\n", len(rules))
+	for _, rule := range rules {
+		fmt.Fprintf(os.Stdout, "- %s | enabled=%v | id=%s\n", rule.DisplayName, rule.IsEnabled, rule.ID)
+	}
+	return nil
+}
+
+// runMailRuleCreate 创建收件箱规则。
+func runMailRuleCreate(args []string) error {
+	fs := flag.NewFlagSet("mail rule-create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	nameFlag := fs.String("name", "", "规则名称")
+	fromFlag := fs.String("from", "", "发件人邮箱，多个用逗号分隔")
+	subjectFlag := fs.String("subject-contains", "", "主题包含关键字，多个用逗号分隔")
+	moveFlag := fs.String("move-to", "", "移动到文件夹名称或 ID")
+	markReadFlag := fs.Bool("mark-read", false, "标记为已读")
+	deleteFlag := fs.Bool("delete", false, "删除邮件")
+	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
+	disabledFlag := fs.Bool("disabled", false, "创建为禁用状态")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl mail rule-create --name <名称> [--from <邮箱>] [--subject-contains <关键字>] [--move-to <文件夹>]")
+	}
+	from := splitAddresses(*fromFlag)
+	subjects := splitAddresses(*subjectFlag)
+	if len(from) == 0 && len(subjects) == 0 {
+		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
+	}
+	if strings.TrimSpace(*moveFlag) == "" && !*markReadFlag && !*deleteFlag && !*stopFlag {
+		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	moveToFolder := strings.TrimSpace(*moveFlag)
+	if moveToFolder != "" {
+		moveToFolder, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, moveToFolder)
+		if err != nil {
+			return err
+		}
+	}
+	rule, err := graph.CreateMessageRule(ctx, loginResult.AccessToken, graph.MessageRuleInput{
+		DisplayName:         *nameFlag,
+		FromAddresses:       from,
+		SubjectContains:     subjects,
+		MoveToFolder:        moveToFolder,
+		MarkAsRead:          *markReadFlag,
+		Delete:              *deleteFlag,
+		StopProcessingRules: *stopFlag,
+		IsEnabled:           !*disabledFlag,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "规则已创建: %s\n", rule.DisplayName)
+	fmt.Fprintf(os.Stdout, "规则 ID: %s\n", rule.ID)
+	return nil
+}
+
+// runMailRuleDelete 删除收件箱规则。
+func runMailRuleDelete(args []string) error {
+	fs := flag.NewFlagSet("mail rule-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	idFlag := fs.String("id", "", "规则 ID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl mail rule-delete --id <规则ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteMessageRule(ctx, loginResult.AccessToken, *idFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "规则已删除: %s\n", *idFlag)
+	return nil
+}
+
+// runMailMasterCategories 列出主类别。
+func runMailMasterCategories(args []string) error {
+	fs := flag.NewFlagSet("mail master-categories", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	categories, err := graph.ListMasterCategories(ctx, loginResult.AccessToken)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(categories, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化主类别失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "主类别数量: %d\n", len(categories))
+	for _, category := range categories {
+		fmt.Fprintf(os.Stdout, "- %s | color=%s | id=%s\n", category.DisplayName, category.Color, category.ID)
+	}
+	return nil
+}
+
+// runMailMasterCategoryCreate 创建主类别。
+func runMailMasterCategoryCreate(args []string) error {
+	fs := flag.NewFlagSet("mail master-category-create", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	nameFlag := fs.String("name", "", "类别名称")
+	colorFlag := fs.String("color", "", "类别颜色，例如 preset0")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl mail master-category-create --name <名称> [--color preset0]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	category, err := graph.CreateMasterCategory(ctx, loginResult.AccessToken, *nameFlag, *colorFlag)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "主类别已创建: %s\n", category.DisplayName)
+	fmt.Fprintf(os.Stdout, "类别 ID: %s\n", category.ID)
+	return nil
+}
+
+// runMailMasterCategoryDelete 删除主类别。
+func runMailMasterCategoryDelete(args []string) error {
+	fs := flag.NewFlagSet("mail master-category-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	idFlag := fs.String("id", "", "类别 ID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl mail master-category-delete --id <类别ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteMasterCategory(ctx, loginResult.AccessToken, *idFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "主类别已删除: %s\n", *idFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2459,5 +2754,11 @@ func printUsage() {
   outlookctl mail message-categories <id>    列出邮件类别
   outlookctl mail category-add <id> --category <名称>  添加类别
   outlookctl mail category-remove <id> --category <名称>  移除类别
+  outlookctl mail rules                       列出收件箱规则
+  outlookctl mail rule-create --name <名称>   创建收件箱规则
+  outlookctl mail rule-delete --id <规则ID>   删除收件箱规则
+  outlookctl mail master-categories           列出主类别
+  outlookctl mail master-category-create --name <名称>  创建主类别
+  outlookctl mail master-category-delete --id <类别ID>  删除主类别
   outlookctl version                       查看版本`)
 }
