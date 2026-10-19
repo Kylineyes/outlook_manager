@@ -230,6 +230,10 @@ type calendarCreateArgs struct {
 	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
 	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
 	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
+	Categories      []string `json:"categories,omitempty" jsonschema:"事件类别列表"`
+	ShowAs          string   `json:"showAs,omitempty" jsonschema:"日程状态: free/tentative/busy/oof/workingElsewhere/unknown"`
+	Importance      string   `json:"importance,omitempty" jsonschema:"事件重要性: low/normal/high"`
+	Sensitivity     string   `json:"sensitivity,omitempty" jsonschema:"事件敏感度: normal/personal/private/confidential"`
 }
 
 // calendarUpdateArgs 是 calendar_update tool 的输入参数。
@@ -249,6 +253,10 @@ type calendarUpdateArgs struct {
 	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
 	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
 	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
+	Categories      []string `json:"categories,omitempty" jsonschema:"事件类别列表"`
+	ShowAs          string   `json:"showAs,omitempty" jsonschema:"日程状态: free/tentative/busy/oof/workingElsewhere/unknown"`
+	Importance      string   `json:"importance,omitempty" jsonschema:"事件重要性: low/normal/high"`
+	Sensitivity     string   `json:"sensitivity,omitempty" jsonschema:"事件敏感度: normal/personal/private/confidential"`
 }
 
 // calendarDeleteArgs 是 calendar_delete tool 的输入参数。
@@ -1743,6 +1751,10 @@ func calendarCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		RepeatInterval:             args.RepeatInterval,
 		RepeatCount:                args.RepeatCount,
 		RepeatUntil:                args.RepeatUntil,
+		Categories:                 args.Categories,
+		ShowAs:                     args.ShowAs,
+		Importance:                 args.Importance,
+		Sensitivity:                args.Sensitivity,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1800,6 +1812,10 @@ func calendarUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		RepeatInterval:             args.RepeatInterval,
 		RepeatCount:                args.RepeatCount,
 		RepeatUntil:                args.RepeatUntil,
+		Categories:                 args.Categories,
+		ShowAs:                     args.ShowAs,
+		Importance:                 args.Importance,
+		Sensitivity:                args.Sensitivity,
 	})
 	if err != nil {
 		return nil, nil, err

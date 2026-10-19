@@ -1928,6 +1928,10 @@ func runCalendarCreate(args []string) error {
 	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
 	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
 	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
+	categoriesFlag := fs.String("categories", "", "事件类别，多个用逗号分隔")
+	showAsFlag := fs.String("show-as", "", "日程状态: free/tentative/busy/oof/workingElsewhere/unknown")
+	importanceFlag := fs.String("importance", "", "事件重要性: low/normal/high")
+	sensitivityFlag := fs.String("sensitivity", "", "事件敏感度: normal/personal/private/confidential")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1975,6 +1979,10 @@ func runCalendarCreate(args []string) error {
 		RepeatInterval:             *repeatIntervalFlag,
 		RepeatCount:                *repeatCountFlag,
 		RepeatUntil:                *repeatUntilFlag,
+		Categories:                 splitAddresses(*categoriesFlag),
+		ShowAs:                     *showAsFlag,
+		Importance:                 *importanceFlag,
+		Sensitivity:                *sensitivityFlag,
 	})
 	if err != nil {
 		return err
@@ -2004,6 +2012,10 @@ func runCalendarUpdate(args []string) error {
 	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
 	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
 	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
+	categoriesFlag := fs.String("categories", "", "事件类别，多个用逗号分隔")
+	showAsFlag := fs.String("show-as", "", "日程状态: free/tentative/busy/oof/workingElsewhere/unknown")
+	importanceFlag := fs.String("importance", "", "事件重要性: low/normal/high")
+	sensitivityFlag := fs.String("sensitivity", "", "事件敏感度: normal/personal/private/confidential")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2051,6 +2063,10 @@ func runCalendarUpdate(args []string) error {
 		RepeatInterval:             *repeatIntervalFlag,
 		RepeatCount:                *repeatCountFlag,
 		RepeatUntil:                *repeatUntilFlag,
+		Categories:                 splitAddresses(*categoriesFlag),
+		ShowAs:                     *showAsFlag,
+		Importance:                 *importanceFlag,
+		Sensitivity:                *sensitivityFlag,
 	})
 	if err != nil {
 		return err

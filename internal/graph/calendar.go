@@ -40,6 +40,10 @@ type CalendarEvent struct {
 	IsAllDay    bool             `json:"isAllDay"`
 	WebLink     string           `json:"webLink"`
 	BodyPreview string           `json:"bodyPreview"`
+	Categories  []string         `json:"categories,omitempty"`
+	ShowAs      string           `json:"showAs,omitempty"`
+	Importance  string           `json:"importance,omitempty"`
+	Sensitivity string           `json:"sensitivity,omitempty"`
 }
 
 // ListCalendarEvents 读取指定时间范围内的日历事件。
@@ -55,7 +59,7 @@ func ListCalendarEvents(ctx context.Context, accessToken string, start, end time
 	query.Set("startDateTime", start.UTC().Format(time.RFC3339))
 	query.Set("endDateTime", end.UTC().Format(time.RFC3339))
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview")
+	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity")
 	query.Set("$orderby", "start/dateTime")
 	endpoint := graphBaseURL + "/me/calendarView?" + query.Encode()
 
@@ -102,6 +106,10 @@ type CalendarEventInput struct {
 	RepeatInterval             int
 	RepeatCount                int
 	RepeatUntil                string
+	Categories                 []string
+	ShowAs                     string
+	Importance                 string
+	Sensitivity                string
 }
 
 // buildCalendarEventPayload 构造 Graph 日历事件请求体。
@@ -133,6 +141,36 @@ func buildCalendarEventPayload(input CalendarEventInput) (map[string]any, error)
 			"timeZone": timeZone,
 		},
 		"isAllDay": input.IsAllDay,
+	}
+	if len(input.Categories) > 0 {
+		payload["categories"] = input.Categories
+	}
+	if strings.TrimSpace(input.ShowAs) != "" {
+		showAs := strings.ToLower(strings.TrimSpace(input.ShowAs))
+		switch showAs {
+		case "free", "tentative", "busy", "oof", "workingelsewhere", "unknown":
+			payload["showAs"] = showAs
+		default:
+			return nil, fmt.Errorf("不支持的日程状态: %s", input.ShowAs)
+		}
+	}
+	if strings.TrimSpace(input.Importance) != "" {
+		importance := strings.ToLower(strings.TrimSpace(input.Importance))
+		switch importance {
+		case "low", "normal", "high":
+			payload["importance"] = importance
+		default:
+			return nil, fmt.Errorf("不支持的事件重要性: %s", input.Importance)
+		}
+	}
+	if strings.TrimSpace(input.Sensitivity) != "" {
+		sensitivity := strings.ToLower(strings.TrimSpace(input.Sensitivity))
+		switch sensitivity {
+		case "normal", "personal", "private", "confidential":
+			payload["sensitivity"] = sensitivity
+		default:
+			return nil, fmt.Errorf("不支持的事件敏感度: %s", input.Sensitivity)
+		}
 	}
 	if strings.TrimSpace(input.Location) != "" {
 		payload["location"] = map[string]string{"displayName": input.Location}
