@@ -18,6 +18,15 @@ type ContactEmailAddress struct {
 	Address string `json:"address"`
 }
 
+// PhysicalAddress 表示联系人地址。
+type PhysicalAddress struct {
+	Street          string `json:"street,omitempty"`
+	City            string `json:"city,omitempty"`
+	State           string `json:"state,omitempty"`
+	PostalCode      string `json:"postalCode,omitempty"`
+	CountryOrRegion string `json:"countryOrRegion,omitempty"`
+}
+
 // Contact 表示一个 Outlook 联系人。
 type Contact struct {
 	ID               string                `json:"id"`
@@ -34,6 +43,9 @@ type Contact struct {
 	OfficeLocation   string                `json:"officeLocation,omitempty"`
 	Profession       string                `json:"profession,omitempty"`
 	BusinessHomePage string                `json:"businessHomePage,omitempty"`
+	HomeAddress      *PhysicalAddress      `json:"homeAddress,omitempty"`
+	BusinessAddress  *PhysicalAddress      `json:"businessAddress,omitempty"`
+	OtherAddress     *PhysicalAddress      `json:"otherAddress,omitempty"`
 }
 
 // ListContacts 读取当前账号默认联系人文件夹中的联系人列表。
@@ -52,7 +64,7 @@ func ListContactsInFolder(ctx context.Context, accessToken, folderID string, top
 	}
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage")
+	query.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage,homeAddress,businessAddress,otherAddress")
 	query.Set("$orderby", "displayName")
 	endpoint := graphBaseURL + "/me/contacts?" + query.Encode()
 	if strings.TrimSpace(folderID) != "" {
@@ -98,6 +110,9 @@ type ContactInput struct {
 	OfficeLocation   string
 	Profession       string
 	BusinessHomePage string
+	HomeAddress      *PhysicalAddress
+	BusinessAddress  *PhysicalAddress
+	OtherAddress     *PhysicalAddress
 }
 
 // buildContactPayload 构造 Graph 联系人请求体。
@@ -146,6 +161,15 @@ func buildContactPayload(input ContactInput) map[string]any {
 	}
 	if strings.TrimSpace(input.BusinessHomePage) != "" {
 		payload["businessHomePage"] = input.BusinessHomePage
+	}
+	if input.HomeAddress != nil {
+		payload["homeAddress"] = input.HomeAddress
+	}
+	if input.BusinessAddress != nil {
+		payload["businessAddress"] = input.BusinessAddress
+	}
+	if input.OtherAddress != nil {
+		payload["otherAddress"] = input.OtherAddress
 	}
 	return payload
 }
@@ -266,7 +290,7 @@ func SearchContacts(ctx context.Context, accessToken, query string, top int) ([]
 	values := url.Values{}
 	values.Set("$filter", filter)
 	values.Set("$top", strconv.Itoa(top))
-	values.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage")
+	values.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage,homeAddress,businessAddress,otherAddress")
 	values.Set("$orderby", "displayName")
 	endpoint := graphBaseURL + "/me/contacts?" + values.Encode()
 
@@ -468,6 +492,9 @@ func CopyContact(ctx context.Context, accessToken, contactID, destinationFolderI
 		OfficeLocation:   contact.OfficeLocation,
 		Profession:       contact.Profession,
 		BusinessHomePage: contact.BusinessHomePage,
+		HomeAddress:      contact.HomeAddress,
+		BusinessAddress:  contact.BusinessAddress,
+		OtherAddress:     contact.OtherAddress,
 	}
 	if strings.TrimSpace(newDisplayName) != "" {
 		input.DisplayName = strings.TrimSpace(newDisplayName)
@@ -518,6 +545,91 @@ func RenameContactFolder(ctx context.Context, accessToken, folderID, displayName
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 重命名联系人文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// PermanentDeleteContact 永久删除联系人。
+func PermanentDeleteContact(ctx context.Context, accessToken, contactID string) error {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return fmt.Errorf("联系人 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/contacts/" + url.PathEscape(contactID) + "/permanentDelete"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建永久删除联系人请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 永久删除联系人失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 永久删除联系人返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// GetContactPhoto 读取联系人照片。
+func GetContactPhoto(ctx context.Context, accessToken, contactID string) ([]byte, string, error) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return nil, "", fmt.Errorf("联系人 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/contacts/" + url.PathEscape(contactID) + "/photo/$value"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("创建联系人照片请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("调用 Graph 联系人照片失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, "", fmt.Errorf("Graph 联系人照片返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("读取联系人照片失败: %w", err)
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
+// SetContactPhoto 设置联系人照片。
+func SetContactPhoto(ctx context.Context, accessToken, contactID string, data []byte, contentType string) error {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return fmt.Errorf("联系人 ID 不能为空")
+	}
+	if len(data) == 0 {
+		return fmt.Errorf("联系人照片内容不能为空")
+	}
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "image/jpeg"
+	}
+	endpoint := graphBaseURL + "/me/contacts/" + url.PathEscape(contactID) + "/photo/$value"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建更新联系人照片请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 更新联系人照片失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 更新联系人照片返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
 }

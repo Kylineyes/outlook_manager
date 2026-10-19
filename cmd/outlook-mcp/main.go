@@ -8,9 +8,13 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -268,44 +272,50 @@ type calendarDeleteArgs struct {
 
 // contactsCreateArgs 是 contacts_create tool 的输入参数。
 type contactsCreateArgs struct {
-	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Folder           string   `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
-	DisplayName      string   `json:"displayName" jsonschema:"显示名称"`
-	GivenName        string   `json:"givenName,omitempty" jsonschema:"名"`
-	Surname          string   `json:"surname,omitempty" jsonschema:"姓"`
-	Emails           []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
-	CompanyName      string   `json:"companyName,omitempty" jsonschema:"公司"`
-	JobTitle         string   `json:"jobTitle,omitempty" jsonschema:"职位"`
-	MobilePhone      string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
-	BusinessPhones   []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
-	NickName         string   `json:"nickName,omitempty" jsonschema:"昵称"`
-	Birthday         string   `json:"birthday,omitempty" jsonschema:"生日，格式 YYYY-MM-DD"`
-	PersonalNotes    string   `json:"personalNotes,omitempty" jsonschema:"个人备注"`
-	Department       string   `json:"department,omitempty" jsonschema:"部门"`
-	OfficeLocation   string   `json:"officeLocation,omitempty" jsonschema:"办公室位置"`
-	Profession       string   `json:"profession,omitempty" jsonschema:"职业"`
-	BusinessHomePage string   `json:"businessHomePage,omitempty" jsonschema:"业务主页网址"`
+	Account          string                 `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Folder           string                 `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
+	DisplayName      string                 `json:"displayName" jsonschema:"显示名称"`
+	GivenName        string                 `json:"givenName,omitempty" jsonschema:"名"`
+	Surname          string                 `json:"surname,omitempty" jsonschema:"姓"`
+	Emails           []string               `json:"emails,omitempty" jsonschema:"邮箱列表"`
+	CompanyName      string                 `json:"companyName,omitempty" jsonschema:"公司"`
+	JobTitle         string                 `json:"jobTitle,omitempty" jsonschema:"职位"`
+	MobilePhone      string                 `json:"mobilePhone,omitempty" jsonschema:"手机号"`
+	BusinessPhones   []string               `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+	NickName         string                 `json:"nickName,omitempty" jsonschema:"昵称"`
+	Birthday         string                 `json:"birthday,omitempty" jsonschema:"生日，格式 YYYY-MM-DD"`
+	PersonalNotes    string                 `json:"personalNotes,omitempty" jsonschema:"个人备注"`
+	Department       string                 `json:"department,omitempty" jsonschema:"部门"`
+	OfficeLocation   string                 `json:"officeLocation,omitempty" jsonschema:"办公室位置"`
+	Profession       string                 `json:"profession,omitempty" jsonschema:"职业"`
+	BusinessHomePage string                 `json:"businessHomePage,omitempty" jsonschema:"业务主页网址"`
+	HomeAddress      *graph.PhysicalAddress `json:"homeAddress,omitempty" jsonschema:"家庭地址"`
+	BusinessAddress  *graph.PhysicalAddress `json:"businessAddress,omitempty" jsonschema:"工作地址"`
+	OtherAddress     *graph.PhysicalAddress `json:"otherAddress,omitempty" jsonschema:"其他地址"`
 }
 
 // contactsUpdateArgs 是 contacts_update tool 的输入参数。
 type contactsUpdateArgs struct {
-	ID               string   `json:"id" jsonschema:"联系人 ID"`
-	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	DisplayName      string   `json:"displayName" jsonschema:"显示名称"`
-	GivenName        string   `json:"givenName,omitempty" jsonschema:"名"`
-	Surname          string   `json:"surname,omitempty" jsonschema:"姓"`
-	Emails           []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
-	CompanyName      string   `json:"companyName,omitempty" jsonschema:"公司"`
-	JobTitle         string   `json:"jobTitle,omitempty" jsonschema:"职位"`
-	MobilePhone      string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
-	BusinessPhones   []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
-	NickName         string   `json:"nickName,omitempty" jsonschema:"昵称"`
-	Birthday         string   `json:"birthday,omitempty" jsonschema:"生日，格式 YYYY-MM-DD"`
-	PersonalNotes    string   `json:"personalNotes,omitempty" jsonschema:"个人备注"`
-	Department       string   `json:"department,omitempty" jsonschema:"部门"`
-	OfficeLocation   string   `json:"officeLocation,omitempty" jsonschema:"办公室位置"`
-	Profession       string   `json:"profession,omitempty" jsonschema:"职业"`
-	BusinessHomePage string   `json:"businessHomePage,omitempty" jsonschema:"业务主页网址"`
+	ID               string                 `json:"id" jsonschema:"联系人 ID"`
+	Account          string                 `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	DisplayName      string                 `json:"displayName" jsonschema:"显示名称"`
+	GivenName        string                 `json:"givenName,omitempty" jsonschema:"名"`
+	Surname          string                 `json:"surname,omitempty" jsonschema:"姓"`
+	Emails           []string               `json:"emails,omitempty" jsonschema:"邮箱列表"`
+	CompanyName      string                 `json:"companyName,omitempty" jsonschema:"公司"`
+	JobTitle         string                 `json:"jobTitle,omitempty" jsonschema:"职位"`
+	MobilePhone      string                 `json:"mobilePhone,omitempty" jsonschema:"手机号"`
+	BusinessPhones   []string               `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+	NickName         string                 `json:"nickName,omitempty" jsonschema:"昵称"`
+	Birthday         string                 `json:"birthday,omitempty" jsonschema:"生日，格式 YYYY-MM-DD"`
+	PersonalNotes    string                 `json:"personalNotes,omitempty" jsonschema:"个人备注"`
+	Department       string                 `json:"department,omitempty" jsonschema:"部门"`
+	OfficeLocation   string                 `json:"officeLocation,omitempty" jsonschema:"办公室位置"`
+	Profession       string                 `json:"profession,omitempty" jsonschema:"职业"`
+	BusinessHomePage string                 `json:"businessHomePage,omitempty" jsonschema:"业务主页网址"`
+	HomeAddress      *graph.PhysicalAddress `json:"homeAddress,omitempty" jsonschema:"家庭地址"`
+	BusinessAddress  *graph.PhysicalAddress `json:"businessAddress,omitempty" jsonschema:"工作地址"`
+	OtherAddress     *graph.PhysicalAddress `json:"otherAddress,omitempty" jsonschema:"其他地址"`
 }
 
 // contactsDeleteArgs 是 contacts_delete tool 的输入参数。
@@ -429,6 +439,25 @@ type mailDraftUpdateArgs struct {
 	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
 	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsPermanentDeleteArgs 是 contacts_permanent_delete tool 的输入参数。
+type contactsPermanentDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsPhotoGetArgs 是 contacts_photo_get tool 的输入参数。
+type contactsPhotoGetArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsPhotoSetArgs 是 contacts_photo_set tool 的输入参数。
+type contactsPhotoSetArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	File    string `json:"file" jsonschema:"本地照片文件路径"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -711,6 +740,21 @@ func main() {
 		Name:        "mail_draft_update",
 		Description: "更新草稿邮件",
 	}, mailDraftUpdateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_permanent_delete",
+		Description: "永久删除联系人",
+	}, contactsPermanentDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_photo_get",
+		Description: "读取联系人照片",
+	}, contactsPhotoGetHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_photo_set",
+		Description: "设置联系人照片",
+	}, contactsPhotoSetHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -1963,6 +2007,9 @@ func contactsCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		OfficeLocation:   args.OfficeLocation,
 		Profession:       args.Profession,
 		BusinessHomePage: args.BusinessHomePage,
+		HomeAddress:      args.HomeAddress,
+		BusinessAddress:  args.BusinessAddress,
+		OtherAddress:     args.OtherAddress,
 	}
 	for _, address := range args.Emails {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
@@ -2035,6 +2082,9 @@ func contactsUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		OfficeLocation:   args.OfficeLocation,
 		Profession:       args.Profession,
 		BusinessHomePage: args.BusinessHomePage,
+		HomeAddress:      args.HomeAddress,
+		BusinessAddress:  args.BusinessAddress,
+		OtherAddress:     args.OtherAddress,
 	}
 	for _, address := range args.Emails {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
@@ -2680,6 +2730,119 @@ func mailDraftUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 		"success": true,
 		"account": selected.Username,
 		"draft":   detail,
+	})
+}
+
+// contactsPermanentDeleteHandler 永久删除联系人。
+func contactsPermanentDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsPermanentDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.PermanentDeleteContact(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"contactId": args.ID,
+	})
+}
+
+// contactsPhotoGetHandler 读取联系人照片。
+func contactsPhotoGetHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsPhotoGetArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, contentType, err := graph.GetContactPhoto(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":     true,
+		"account":     selected.Username,
+		"contactId":   args.ID,
+		"contentType": contentType,
+		"size":        len(data),
+		"base64":      base64.StdEncoding.EncodeToString(data),
+	})
+}
+
+// contactsPhotoSetHandler 设置联系人照片。
+func contactsPhotoSetHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsPhotoSetArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 和照片文件不能为空")
+	}
+	data, err := os.ReadFile(args.File)
+	if err != nil {
+		return nil, nil, fmt.Errorf("读取联系人照片失败: %w", err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(args.File))
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetContactPhoto(ctx, loginResult.AccessToken, args.ID, data, contentType); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":     true,
+		"account":     selected.Username,
+		"contactId":   args.ID,
+		"contentType": contentType,
+		"size":        len(data),
 	})
 }
 
