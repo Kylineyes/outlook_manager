@@ -1829,6 +1829,8 @@ func runContacts(args []string) error {
 		return runContactsUpdate(args[1:])
 	case "delete":
 		return runContactsDelete(args[1:])
+	case "permanent-delete":
+		return runContactsPermanentDelete(args[1:])
 	case "move":
 		return runContactsMove(args[1:])
 	case "copy":
@@ -2150,6 +2152,9 @@ func runContactsCreate(args []string) error {
 	officeFlag := fs.String("office", "", "办公室位置")
 	professionFlag := fs.String("profession", "", "职业")
 	websiteFlag := fs.String("website", "", "网站，多个用逗号分隔")
+	homeAddressFlag := fs.String("home-address", "", "家庭地址，格式 street|city|state|postal|country")
+	businessAddressFlag := fs.String("business-address", "", "工作地址，格式 street|city|state|postal|country")
+	otherAddressFlag := fs.String("other-address", "", "其他地址，格式 street|city|state|postal|country")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2170,6 +2175,9 @@ func runContactsCreate(args []string) error {
 		OfficeLocation:   *officeFlag,
 		Profession:       *professionFlag,
 		BusinessHomePage: *websiteFlag,
+		HomeAddress:      parseAddress(*homeAddressFlag),
+		BusinessAddress:  parseAddress(*businessAddressFlag),
+		OtherAddress:     parseAddress(*otherAddressFlag),
 	}
 	for _, address := range splitAddresses(*emailFlag) {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
@@ -2234,6 +2242,9 @@ func runContactsUpdate(args []string) error {
 	officeFlag := fs.String("office", "", "办公室位置")
 	professionFlag := fs.String("profession", "", "职业")
 	websiteFlag := fs.String("website", "", "网站，多个用逗号分隔")
+	homeAddressFlag := fs.String("home-address", "", "家庭地址，格式 street|city|state|postal|country")
+	businessAddressFlag := fs.String("business-address", "", "工作地址，格式 street|city|state|postal|country")
+	otherAddressFlag := fs.String("other-address", "", "其他地址，格式 street|city|state|postal|country")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2254,6 +2265,9 @@ func runContactsUpdate(args []string) error {
 		OfficeLocation:   *officeFlag,
 		Profession:       *professionFlag,
 		BusinessHomePage: *websiteFlag,
+		HomeAddress:      parseAddress(*homeAddressFlag),
+		BusinessAddress:  parseAddress(*businessAddressFlag),
+		OtherAddress:     parseAddress(*otherAddressFlag),
 	}
 	for _, address := range splitAddresses(*emailFlag) {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
@@ -3095,6 +3109,63 @@ func parseBirthday(value string) string {
 	return parsed.Format(time.RFC3339)
 }
 
+// parseAddress 把 street|city|state|postal|country 格式解析为联系人地址。
+func parseAddress(value string) *graph.PhysicalAddress {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, "|")
+	for len(parts) < 5 {
+		parts = append(parts, "")
+	}
+	return &graph.PhysicalAddress{
+		Street:          strings.TrimSpace(parts[0]),
+		City:            strings.TrimSpace(parts[1]),
+		State:           strings.TrimSpace(parts[2]),
+		PostalCode:      strings.TrimSpace(parts[3]),
+		CountryOrRegion: strings.TrimSpace(parts[4]),
+	}
+}
+
+// runContactsPermanentDelete 永久删除联系人。
+func runContactsPermanentDelete(args []string) error {
+	fs := flag.NewFlagSet("contacts permanent-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "联系人 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl contacts permanent-delete --id <联系人ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.PermanentDeleteContact(ctx, loginResult.AccessToken, *idFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已永久删除: %s\n", *idFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3131,6 +3202,7 @@ func printUsage() {
   outlookctl contacts create --display-name <名称>  创建联系人
   outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
   outlookctl contacts delete --id <联系人ID>  删除联系人
+  outlookctl contacts permanent-delete --id <联系人ID>  永久删除联系人
   outlookctl contacts move --id <联系人ID> --folder <文件夹>  移动联系人
   outlookctl contacts copy --id <联系人ID> --folder <文件夹>  复制联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
