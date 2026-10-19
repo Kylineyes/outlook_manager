@@ -202,9 +202,10 @@ type mailCategoryArgs struct {
 
 // calendarListArgs 是 calendar_list tool 的输入参数。
 type calendarListArgs struct {
-	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Days    int    `json:"days,omitempty" jsonschema:"查询未来多少天，默认 7，最大 90"`
-	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少条事件，默认 50，最大 200"`
+	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Days     int    `json:"days,omitempty" jsonschema:"查询未来多少天，默认 7，最大 90"`
+	Top      int    `json:"top,omitempty" jsonschema:"最多返回多少条事件，默认 50，最大 200"`
+	Calendar string `json:"calendar,omitempty" jsonschema:"日历名称或 ID；不填时使用默认日历"`
 }
 
 // contactsListArgs 是 contacts_list tool 的输入参数。
@@ -385,6 +386,11 @@ type contactsCopyArgs struct {
 	ID      string `json:"id" jsonschema:"联系人 ID"`
 	Folder  string `json:"folder" jsonschema:"目标联系人文件夹名称或 ID"`
 	Name    string `json:"name,omitempty" jsonschema:"新联系人显示名称，不填时沿用原名"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarCalendarsArgs 是 calendar_calendars_list tool 的输入参数。
+type calendarCalendarsArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
@@ -653,6 +659,11 @@ func main() {
 		Name:        "contacts_copy",
 		Description: "复制联系人到指定文件夹",
 	}, contactsCopyHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_calendars_list",
+		Description: "列出日历",
+	}, calendarCalendarsHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -1650,7 +1661,11 @@ func calendarListHandler(ctx context.Context, req *mcp.CallToolRequest, args cal
 
 	start := time.Now().UTC()
 	end := start.AddDate(0, 0, days)
-	events, err := graph.ListCalendarEvents(ctx, loginResult.AccessToken, start, end, args.Top)
+	calendarID, err := graph.ResolveCalendarID(ctx, loginResult.AccessToken, args.Calendar)
+	if err != nil {
+		return nil, nil, err
+	}
+	events, err := graph.ListCalendarEventsInCalendar(ctx, loginResult.AccessToken, calendarID, start, end, args.Top)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -2466,6 +2481,36 @@ func contactsCopyHandler(ctx context.Context, req *mcp.CallToolRequest, args con
 		"sourceId":      args.ID,
 		"copiedContact": copied,
 		"folder":        args.Folder,
+	})
+}
+
+// calendarCalendarsHandler 列出日历。
+func calendarCalendarsHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarCalendarsArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	calendars, err := graph.ListCalendars(ctx, loginResult.AccessToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account":   selected.Username,
+		"calendars": calendars,
 	})
 }
 

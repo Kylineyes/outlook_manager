@@ -1714,6 +1714,8 @@ func runCalendar(args []string) error {
 	switch args[0] {
 	case "list":
 		return runCalendarList(args[1:])
+	case "calendars":
+		return runCalendarCalendars(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
@@ -1731,6 +1733,7 @@ func runCalendarList(args []string) error {
 	fs := flag.NewFlagSet("calendar list", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	calendarFlag := fs.String("calendar", "", "日历名称或 ID；不填时使用默认日历")
 	daysFlag := fs.Int("days", 7, "查询未来多少天，范围 1-90")
 	topFlag := fs.Int("top", 50, "最多返回多少条事件，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
@@ -1766,7 +1769,11 @@ func runCalendarList(args []string) error {
 
 	start := time.Now().UTC()
 	end := start.AddDate(0, 0, *daysFlag)
-	events, err := graph.ListCalendarEvents(ctx, loginResult.AccessToken, start, end, *topFlag)
+	calendarID, err := graph.ResolveCalendarID(ctx, loginResult.AccessToken, *calendarFlag)
+	if err != nil {
+		return err
+	}
+	events, err := graph.ListCalendarEventsInCalendar(ctx, loginResult.AccessToken, calendarID, start, end, *topFlag)
 	if err != nil {
 		return err
 	}
@@ -2884,6 +2891,53 @@ func runContactsCopy(args []string) error {
 	return nil
 }
 
+// runCalendarCalendars 列出日历。
+func runCalendarCalendars(args []string) error {
+	fs := flag.NewFlagSet("calendar calendars", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	calendars, err := graph.ListCalendars(ctx, loginResult.AccessToken)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(calendars, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化日历列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历数量: %d\n", len(calendars))
+	for _, calendar := range calendars {
+		fmt.Fprintf(os.Stdout, "- %s | 默认=%v | 可编辑=%v | id=%s\n", calendar.Name, calendar.IsDefaultCalendar, calendar.CanEdit, calendar.ID)
+	}
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2906,6 +2960,8 @@ func printUsage() {
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
   outlookctl calendar list --days 7          查看未来日历事件
+  outlookctl calendar calendars              列出日历
+  outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
   outlookctl calendar delete --id <事件ID>  删除事件
