@@ -138,3 +138,29 @@ func SetMessageImportance(ctx context.Context, accessToken, messageID, importanc
 		"importance": importance,
 	})
 }
+
+// PermanentDeleteMessage 永久删除邮件。
+// Graph 会把邮件移动到可恢复项目中的 purges 文件夹，普通客户端无法访问。
+func PermanentDeleteMessage(ctx context.Context, accessToken, messageID string) error {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return fmt.Errorf("邮件 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/messages/" + url.PathEscape(messageID) + "/permanentDelete"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建永久删除邮件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 永久删除邮件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 永久删除邮件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}

@@ -366,6 +366,12 @@ type contactsMoveArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailPermanentDeleteArgs 是 mail_permanent_delete tool 的输入参数。
+type mailPermanentDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -621,6 +627,11 @@ func main() {
 		Name:        "contacts_move",
 		Description: "把联系人移动到指定文件夹",
 	}, contactsMoveHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_permanent_delete",
+		Description: "永久删除邮件",
+	}, mailPermanentDeleteHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2353,6 +2364,39 @@ func contactsMoveHandler(ctx context.Context, req *mcp.CallToolRequest, args con
 		"oldContactId": args.ID,
 		"newContact":   moved,
 		"folder":       args.Folder,
+	})
+}
+
+// mailPermanentDeleteHandler 永久删除邮件。
+func mailPermanentDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailPermanentDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.PermanentDeleteMessage(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
 	})
 }
 
