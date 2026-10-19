@@ -59,6 +59,7 @@ type mailSendArgs struct {
 	IsHTML          bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
 	SaveToSentItems bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
 	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments     []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 }
 
 // mailMarkArgs 是 mail_mark_read / mail_mark_unread tool 的输入参数。
@@ -123,13 +124,14 @@ type mailForwardArgs struct {
 
 // mailDraftCreateArgs 是 mail_draft_create tool 的输入参数。
 type mailDraftCreateArgs struct {
-	To      []string `json:"to" jsonschema:"收件人邮箱列表"`
-	Cc      []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
-	Bcc     []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
-	Subject string   `json:"subject" jsonschema:"邮件主题"`
-	Body    string   `json:"body" jsonschema:"邮件正文"`
-	IsHTML  bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
-	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	To          []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc          []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc         []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject     string   `json:"subject" jsonschema:"邮件主题"`
+	Body        string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML      bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	Account     string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 }
 
 // mailDraftsArgs 是 mail_drafts_list tool 的输入参数。
@@ -347,6 +349,13 @@ type mailMasterCategoryCreateArgs struct {
 type mailMasterCategoryDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	ID      string `json:"id" jsonschema:"类别 ID"`
+}
+
+// contactsMoveArgs 是 contacts_move tool 的输入参数。
+type contactsMoveArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	Folder  string `json:"folder" jsonschema:"目标联系人文件夹名称或 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -600,6 +609,11 @@ func main() {
 		Name:        "mail_master_category_delete",
 		Description: "删除主类别",
 	}, mailMasterCategoryDeleteHandler)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_move",
+		Description: "把联系人移动到指定文件夹",
+	}, contactsMoveHandler)
+
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
 	}
@@ -800,6 +814,11 @@ func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSen
 	if args.IsHTML {
 		contentType = "HTML"
 	}
+	attachments, err := graph.LoadMailAttachments(args.Attachments)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	input := graph.SendMailInput{
 		To:              args.To,
 		Cc:              args.Cc,
@@ -807,6 +826,7 @@ func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSen
 		Subject:         args.Subject,
 		Body:            args.Body,
 		ContentType:     contentType,
+		Attachments:     attachments,
 		SaveToSentItems: args.SaveToSentItems,
 	}
 	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
@@ -1176,6 +1196,11 @@ func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 	if args.IsHTML {
 		contentType = "HTML"
 	}
+	attachments, err := graph.LoadMailAttachments(args.Attachments)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, graph.SendMailInput{
 		To:          args.To,
 		Cc:          args.Cc,
@@ -1183,6 +1208,7 @@ func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 		Subject:     args.Subject,
 		Body:        args.Body,
 		ContentType: contentType,
+		Attachments: attachments,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -2273,6 +2299,46 @@ func mailMasterCategoryDeleteHandler(ctx context.Context, req *mcp.CallToolReque
 		"success":    true,
 		"account":    selected.Username,
 		"categoryId": args.ID,
+	})
+}
+
+// contactsMoveHandler 把联系人移动到指定文件夹。
+func contactsMoveHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsMoveArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Folder) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 和目标文件夹不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderID, err := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, args.Folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	moved, err := graph.MoveContact(ctx, loginResult.AccessToken, args.ID, folderID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"oldContactId": args.ID,
+		"newContact":   moved,
+		"folder":       args.Folder,
 	})
 }
 

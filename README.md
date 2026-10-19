@@ -22,6 +22,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件删除（移动到已删除邮件）
 - 邮件附件列表
 - 邮件附件下载
+- 邮件发送附件
 - 邮件类别查看、添加、移除
 - 收件箱规则管理
 - 主类别管理
@@ -34,6 +35,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 日历重复事件
 - 联系人文件夹管理
 - 在联系人文件夹中创建联系人
+- 联系人移动到文件夹
 - 草稿创建、列表、发送
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
@@ -82,6 +84,7 @@ outlookctl mail list --top 10
 outlookctl mail read <message-id>
 outlookctl mail search --query "关键字"
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文"
+outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail mark-read <message-id>
 outlookctl mail mark-unread <message-id>
 outlookctl mail folders
@@ -112,12 +115,14 @@ outlookctl contacts folder-create --name "客户"
 outlookctl contacts folder-delete --id <文件夹ID>
 outlookctl contacts create --display-name "名称" --email someone@example.com
 outlookctl contacts create --folder "客户" --display-name "名称" --email someone@example.com
+outlookctl contacts move --id <联系人ID> --folder "客户"
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl mail reply <message-id> --body "回复内容"
 outlookctl mail reply-all <message-id> --body "回复内容"
 outlookctl mail forward <message-id> --to someone@example.com --body "转发内容"
 outlookctl mail draft-create --to someone@example.com --subject "主题" --body "正文"
+outlookctl mail draft-create --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail drafts
 outlookctl mail draft-send <draft-id>
 outlookctl mail folder-create --name "新文件夹"
@@ -166,6 +171,7 @@ outlookctl mail importance <message-id> --level high
 - `contacts_folders_list`
 - `contacts_folder_create`
 - `contacts_folder_delete`
+- `contacts_move`
 - `mail_reply`
 - `mail_reply_all`
 - `mail_forward`
