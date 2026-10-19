@@ -2143,6 +2143,13 @@ func runContactsCreate(args []string) error {
 	jobTitleFlag := fs.String("job-title", "", "职位")
 	mobileFlag := fs.String("mobile", "", "手机号")
 	businessFlag := fs.String("business-phone", "", "工作电话，多个用逗号分隔")
+	nicknameFlag := fs.String("nickname", "", "昵称")
+	birthdayFlag := fs.String("birthday", "", "生日，格式 YYYY-MM-DD")
+	notesFlag := fs.String("notes", "", "个人备注")
+	departmentFlag := fs.String("department", "", "部门")
+	officeFlag := fs.String("office", "", "办公室位置")
+	professionFlag := fs.String("profession", "", "职业")
+	websiteFlag := fs.String("website", "", "网站，多个用逗号分隔")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2150,12 +2157,19 @@ func runContactsCreate(args []string) error {
 		return errors.New("用法: outlookctl contacts create --display-name <名称>")
 	}
 	input := graph.ContactInput{
-		DisplayName: *displayNameFlag,
-		GivenName:   *givenNameFlag,
-		Surname:     *surnameFlag,
-		CompanyName: *companyFlag,
-		JobTitle:    *jobTitleFlag,
-		MobilePhone: *mobileFlag,
+		DisplayName:      *displayNameFlag,
+		GivenName:        *givenNameFlag,
+		Surname:          *surnameFlag,
+		CompanyName:      *companyFlag,
+		JobTitle:         *jobTitleFlag,
+		MobilePhone:      *mobileFlag,
+		NickName:         *nicknameFlag,
+		Birthday:         parseBirthday(*birthdayFlag),
+		PersonalNotes:    *notesFlag,
+		Department:       *departmentFlag,
+		OfficeLocation:   *officeFlag,
+		Profession:       *professionFlag,
+		BusinessHomePage: *websiteFlag,
 	}
 	for _, address := range splitAddresses(*emailFlag) {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
@@ -2213,6 +2227,13 @@ func runContactsUpdate(args []string) error {
 	jobTitleFlag := fs.String("job-title", "", "职位")
 	mobileFlag := fs.String("mobile", "", "手机号")
 	businessFlag := fs.String("business-phone", "", "工作电话，多个用逗号分隔")
+	nicknameFlag := fs.String("nickname", "", "昵称")
+	birthdayFlag := fs.String("birthday", "", "生日，格式 YYYY-MM-DD")
+	notesFlag := fs.String("notes", "", "个人备注")
+	departmentFlag := fs.String("department", "", "部门")
+	officeFlag := fs.String("office", "", "办公室位置")
+	professionFlag := fs.String("profession", "", "职业")
+	websiteFlag := fs.String("website", "", "网站，多个用逗号分隔")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2220,12 +2241,19 @@ func runContactsUpdate(args []string) error {
 		return errors.New("用法: outlookctl contacts update --id <联系人ID> --display-name <名称>")
 	}
 	input := graph.ContactInput{
-		DisplayName: *displayNameFlag,
-		GivenName:   *givenNameFlag,
-		Surname:     *surnameFlag,
-		CompanyName: *companyFlag,
-		JobTitle:    *jobTitleFlag,
-		MobilePhone: *mobileFlag,
+		DisplayName:      *displayNameFlag,
+		GivenName:        *givenNameFlag,
+		Surname:          *surnameFlag,
+		CompanyName:      *companyFlag,
+		JobTitle:         *jobTitleFlag,
+		MobilePhone:      *mobileFlag,
+		NickName:         *nicknameFlag,
+		Birthday:         parseBirthday(*birthdayFlag),
+		PersonalNotes:    *notesFlag,
+		Department:       *departmentFlag,
+		OfficeLocation:   *officeFlag,
+		Profession:       *professionFlag,
+		BusinessHomePage: *websiteFlag,
 	}
 	for _, address := range splitAddresses(*emailFlag) {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
@@ -3052,6 +3080,19 @@ func runMailDraftUpdate(args []string) error {
 	fmt.Fprintf(os.Stdout, "草稿已更新: %s\n", detail.Subject)
 	fmt.Fprintf(os.Stdout, "草稿 ID: %s\n", detail.ID)
 	return nil
+}
+
+// parseBirthday 把 YYYY-MM-DD 格式的生日转换为 Graph 日期时间结构。
+func parseBirthday(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parsed, err := time.ParseInLocation("2006-01-02", value, time.UTC)
+	if err != nil {
+		return ""
+	}
+	return parsed.Format(time.RFC3339)
 }
 
 // printUsage 输出命令行帮助。

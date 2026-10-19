@@ -268,30 +268,44 @@ type calendarDeleteArgs struct {
 
 // contactsCreateArgs 是 contacts_create tool 的输入参数。
 type contactsCreateArgs struct {
-	Account        string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Folder         string   `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
-	DisplayName    string   `json:"displayName" jsonschema:"显示名称"`
-	GivenName      string   `json:"givenName,omitempty" jsonschema:"名"`
-	Surname        string   `json:"surname,omitempty" jsonschema:"姓"`
-	Emails         []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
-	CompanyName    string   `json:"companyName,omitempty" jsonschema:"公司"`
-	JobTitle       string   `json:"jobTitle,omitempty" jsonschema:"职位"`
-	MobilePhone    string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
-	BusinessPhones []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Folder           string   `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
+	DisplayName      string   `json:"displayName" jsonschema:"显示名称"`
+	GivenName        string   `json:"givenName,omitempty" jsonschema:"名"`
+	Surname          string   `json:"surname,omitempty" jsonschema:"姓"`
+	Emails           []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
+	CompanyName      string   `json:"companyName,omitempty" jsonschema:"公司"`
+	JobTitle         string   `json:"jobTitle,omitempty" jsonschema:"职位"`
+	MobilePhone      string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
+	BusinessPhones   []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+	NickName         string   `json:"nickName,omitempty" jsonschema:"昵称"`
+	Birthday         string   `json:"birthday,omitempty" jsonschema:"生日，格式 YYYY-MM-DD"`
+	PersonalNotes    string   `json:"personalNotes,omitempty" jsonschema:"个人备注"`
+	Department       string   `json:"department,omitempty" jsonschema:"部门"`
+	OfficeLocation   string   `json:"officeLocation,omitempty" jsonschema:"办公室位置"`
+	Profession       string   `json:"profession,omitempty" jsonschema:"职业"`
+	BusinessHomePage string   `json:"businessHomePage,omitempty" jsonschema:"业务主页网址"`
 }
 
 // contactsUpdateArgs 是 contacts_update tool 的输入参数。
 type contactsUpdateArgs struct {
-	ID             string   `json:"id" jsonschema:"联系人 ID"`
-	Account        string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	DisplayName    string   `json:"displayName" jsonschema:"显示名称"`
-	GivenName      string   `json:"givenName,omitempty" jsonschema:"名"`
-	Surname        string   `json:"surname,omitempty" jsonschema:"姓"`
-	Emails         []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
-	CompanyName    string   `json:"companyName,omitempty" jsonschema:"公司"`
-	JobTitle       string   `json:"jobTitle,omitempty" jsonschema:"职位"`
-	MobilePhone    string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
-	BusinessPhones []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+	ID               string   `json:"id" jsonschema:"联系人 ID"`
+	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	DisplayName      string   `json:"displayName" jsonschema:"显示名称"`
+	GivenName        string   `json:"givenName,omitempty" jsonschema:"名"`
+	Surname          string   `json:"surname,omitempty" jsonschema:"姓"`
+	Emails           []string `json:"emails,omitempty" jsonschema:"邮箱列表"`
+	CompanyName      string   `json:"companyName,omitempty" jsonschema:"公司"`
+	JobTitle         string   `json:"jobTitle,omitempty" jsonschema:"职位"`
+	MobilePhone      string   `json:"mobilePhone,omitempty" jsonschema:"手机号"`
+	BusinessPhones   []string `json:"businessPhones,omitempty" jsonschema:"工作电话列表"`
+	NickName         string   `json:"nickName,omitempty" jsonschema:"昵称"`
+	Birthday         string   `json:"birthday,omitempty" jsonschema:"生日，格式 YYYY-MM-DD"`
+	PersonalNotes    string   `json:"personalNotes,omitempty" jsonschema:"个人备注"`
+	Department       string   `json:"department,omitempty" jsonschema:"部门"`
+	OfficeLocation   string   `json:"officeLocation,omitempty" jsonschema:"办公室位置"`
+	Profession       string   `json:"profession,omitempty" jsonschema:"职业"`
+	BusinessHomePage string   `json:"businessHomePage,omitempty" jsonschema:"业务主页网址"`
 }
 
 // contactsDeleteArgs 是 contacts_delete tool 的输入参数。
@@ -1926,13 +1940,29 @@ func contactsCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 	if strings.TrimSpace(args.DisplayName) == "" {
 		return nil, nil, fmt.Errorf("显示名称不能为空")
 	}
+	var birthday string
+	if strings.TrimSpace(args.Birthday) != "" {
+		parsed, parseErr := parseCalendarTimeValue(args.Birthday)
+		if parseErr != nil {
+			return nil, nil, parseErr
+		}
+		birthday = parsed.Format(time.RFC3339)
+	}
+
 	input := graph.ContactInput{
-		DisplayName: args.DisplayName,
-		GivenName:   args.GivenName,
-		Surname:     args.Surname,
-		CompanyName: args.CompanyName,
-		JobTitle:    args.JobTitle,
-		MobilePhone: args.MobilePhone,
+		DisplayName:      args.DisplayName,
+		GivenName:        args.GivenName,
+		Surname:          args.Surname,
+		CompanyName:      args.CompanyName,
+		JobTitle:         args.JobTitle,
+		MobilePhone:      args.MobilePhone,
+		NickName:         args.NickName,
+		Birthday:         birthday,
+		PersonalNotes:    args.PersonalNotes,
+		Department:       args.Department,
+		OfficeLocation:   args.OfficeLocation,
+		Profession:       args.Profession,
+		BusinessHomePage: args.BusinessHomePage,
 	}
 	for _, address := range args.Emails {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
@@ -1982,13 +2012,29 @@ func contactsUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.DisplayName) == "" {
 		return nil, nil, fmt.Errorf("联系人 ID 和显示名称不能为空")
 	}
+	var birthday string
+	if strings.TrimSpace(args.Birthday) != "" {
+		parsed, parseErr := parseCalendarTimeValue(args.Birthday)
+		if parseErr != nil {
+			return nil, nil, parseErr
+		}
+		birthday = parsed.Format(time.RFC3339)
+	}
+
 	input := graph.ContactInput{
-		DisplayName: args.DisplayName,
-		GivenName:   args.GivenName,
-		Surname:     args.Surname,
-		CompanyName: args.CompanyName,
-		JobTitle:    args.JobTitle,
-		MobilePhone: args.MobilePhone,
+		DisplayName:      args.DisplayName,
+		GivenName:        args.GivenName,
+		Surname:          args.Surname,
+		CompanyName:      args.CompanyName,
+		JobTitle:         args.JobTitle,
+		MobilePhone:      args.MobilePhone,
+		NickName:         args.NickName,
+		Birthday:         birthday,
+		PersonalNotes:    args.PersonalNotes,
+		Department:       args.Department,
+		OfficeLocation:   args.OfficeLocation,
+		Profession:       args.Profession,
+		BusinessHomePage: args.BusinessHomePage,
 	}
 	for _, address := range args.Emails {
 		input.EmailAddresses = append(input.EmailAddresses, graph.ContactEmailAddress{Address: address})
