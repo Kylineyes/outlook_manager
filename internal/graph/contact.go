@@ -445,3 +445,37 @@ func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderI
 	}
 	return moved, nil
 }
+
+// RenameContactFolder 重命名联系人文件夹。
+func RenameContactFolder(ctx context.Context, accessToken, folderID, displayName string) error {
+	folderID = strings.TrimSpace(folderID)
+	displayName = strings.TrimSpace(displayName)
+	if folderID == "" {
+		return fmt.Errorf("联系人文件夹 ID 不能为空")
+	}
+	if displayName == "" {
+		return fmt.Errorf("文件夹名称不能为空")
+	}
+	payload, err := json.Marshal(map[string]string{"displayName": displayName})
+	if err != nil {
+		return fmt.Errorf("序列化重命名联系人文件夹请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/contactFolders/" + url.PathEscape(folderID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("创建重命名联系人文件夹请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 重命名联系人文件夹失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 重命名联系人文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}

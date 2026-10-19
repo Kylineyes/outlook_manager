@@ -1815,6 +1815,8 @@ func runContacts(args []string) error {
 		return runContactsFolders(args[1:])
 	case "folder-create":
 		return runContactsFolderCreate(args[1:])
+	case "folder-rename":
+		return runContactsFolderRename(args[1:])
 	case "folder-delete":
 		return runContactsFolderDelete(args[1:])
 	case "search":
@@ -2938,6 +2940,45 @@ func runCalendarCalendars(args []string) error {
 	return nil
 }
 
+// runContactsFolderRename 重命名联系人文件夹。
+func runContactsFolderRename(args []string) error {
+	fs := flag.NewFlagSet("contacts folder-rename", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "文件夹 ID")
+	nameFlag := fs.String("name", "", "新文件夹名称")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl contacts folder-rename --id <文件夹ID> --name <新名称>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.RenameContactFolder(ctx, loginResult.AccessToken, *idFlag, *nameFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人文件夹已重命名为: %s\n", *nameFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2969,6 +3010,7 @@ func printUsage() {
   outlookctl contacts search --query <关键字>  搜索联系人
   outlookctl contacts folders               列出联系人文件夹
   outlookctl contacts folder-create --name <名称>  创建联系人文件夹
+  outlookctl contacts folder-rename --id <文件夹ID> --name <新名称>  重命名联系人文件夹
   outlookctl contacts folder-delete --id <文件夹ID>  删除联系人文件夹
   outlookctl contacts create --display-name <名称>  创建联系人
   outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
