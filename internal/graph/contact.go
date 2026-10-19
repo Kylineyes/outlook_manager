@@ -412,9 +412,9 @@ func GetContact(ctx context.Context, accessToken, contactID string) (*Contact, e
 	return &contact, nil
 }
 
-// MoveContact 把联系人移动到指定联系人文件夹。
-// Graph 没有直接移动联系人的接口，因此这里使用复制到目标文件夹再删除原联系人的方式。
-func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderID string) (*Contact, error) {
+// CopyContact 把联系人复制到指定联系人文件夹。
+// newDisplayName 为空时沿用原显示名称。
+func CopyContact(ctx context.Context, accessToken, contactID, destinationFolderID, newDisplayName string) (*Contact, error) {
 	contact, err := GetContact(ctx, accessToken, contactID)
 	if err != nil {
 		return nil, err
@@ -427,7 +427,16 @@ func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderI
 		EmailAddresses: contact.EmailAddresses,
 		BusinessPhones: contact.BusinessPhones,
 	}
-	moved, err := CreateContactInFolder(ctx, accessToken, destinationFolderID, input)
+	if strings.TrimSpace(newDisplayName) != "" {
+		input.DisplayName = strings.TrimSpace(newDisplayName)
+	}
+	return CreateContactInFolder(ctx, accessToken, destinationFolderID, input)
+}
+
+// MoveContact 把联系人移动到指定联系人文件夹。
+// Graph 没有直接移动联系人的接口，因此这里使用复制到目标文件夹再删除原联系人的方式。
+func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderID string) (*Contact, error) {
+	moved, err := CopyContact(ctx, accessToken, contactID, destinationFolderID, "")
 	if err != nil {
 		return nil, err
 	}

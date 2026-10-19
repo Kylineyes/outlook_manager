@@ -380,6 +380,14 @@ type mailPermanentDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// contactsCopyArgs 是 contacts_copy tool 的输入参数。
+type contactsCopyArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	Folder  string `json:"folder" jsonschema:"目标联系人文件夹名称或 ID"`
+	Name    string `json:"name,omitempty" jsonschema:"新联系人显示名称，不填时沿用原名"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -640,6 +648,11 @@ func main() {
 		Name:        "mail_permanent_delete",
 		Description: "永久删除邮件",
 	}, mailPermanentDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_copy",
+		Description: "复制联系人到指定文件夹",
+	}, contactsCopyHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2413,6 +2426,46 @@ func mailPermanentDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, a
 		"success":   true,
 		"account":   selected.Username,
 		"messageId": args.ID,
+	})
+}
+
+// contactsCopyHandler 复制联系人到指定文件夹。
+func contactsCopyHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsCopyArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Folder) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 和目标文件夹不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderID, err := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, args.Folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	copied, err := graph.CopyContact(ctx, loginResult.AccessToken, args.ID, folderID, args.Name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":       true,
+		"account":       selected.Username,
+		"sourceId":      args.ID,
+		"copiedContact": copied,
+		"folder":        args.Folder,
 	})
 }
 
