@@ -286,6 +286,8 @@ func runMail(args []string) error {
 		return runMailDrafts(args[1:])
 	case "draft-send":
 		return runMailDraftSend(args[1:])
+	case "draft-update":
+		return runMailDraftUpdate(args[1:])
 	case "folder-create":
 		return runMailFolderCreate(args[1:])
 	case "folder-rename":
@@ -1714,6 +1716,8 @@ func runCalendar(args []string) error {
 	switch args[0] {
 	case "list":
 		return runCalendarList(args[1:])
+	case "calendars":
+		return runCalendarCalendars(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
@@ -1731,6 +1735,7 @@ func runCalendarList(args []string) error {
 	fs := flag.NewFlagSet("calendar list", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	calendarFlag := fs.String("calendar", "", "日历名称或 ID；不填时使用默认日历")
 	daysFlag := fs.Int("days", 7, "查询未来多少天，范围 1-90")
 	topFlag := fs.Int("top", 50, "最多返回多少条事件，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
@@ -1766,7 +1771,11 @@ func runCalendarList(args []string) error {
 
 	start := time.Now().UTC()
 	end := start.AddDate(0, 0, *daysFlag)
-	events, err := graph.ListCalendarEvents(ctx, loginResult.AccessToken, start, end, *topFlag)
+	calendarID, err := graph.ResolveCalendarID(ctx, loginResult.AccessToken, *calendarFlag)
+	if err != nil {
+		return err
+	}
+	events, err := graph.ListCalendarEventsInCalendar(ctx, loginResult.AccessToken, calendarID, start, end, *topFlag)
 	if err != nil {
 		return err
 	}
@@ -1808,6 +1817,8 @@ func runContacts(args []string) error {
 		return runContactsFolders(args[1:])
 	case "folder-create":
 		return runContactsFolderCreate(args[1:])
+	case "folder-rename":
+		return runContactsFolderRename(args[1:])
 	case "folder-delete":
 		return runContactsFolderDelete(args[1:])
 	case "search":
@@ -1820,6 +1831,8 @@ func runContacts(args []string) error {
 		return runContactsDelete(args[1:])
 	case "move":
 		return runContactsMove(args[1:])
+	case "copy":
+		return runContactsCopy(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
@@ -1928,6 +1941,10 @@ func runCalendarCreate(args []string) error {
 	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
 	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
 	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
+	categoriesFlag := fs.String("categories", "", "事件类别，多个用逗号分隔")
+	showAsFlag := fs.String("show-as", "", "日程状态: free/tentative/busy/oof/workingElsewhere/unknown")
+	importanceFlag := fs.String("importance", "", "事件重要性: low/normal/high")
+	sensitivityFlag := fs.String("sensitivity", "", "事件敏感度: normal/personal/private/confidential")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1975,6 +1992,10 @@ func runCalendarCreate(args []string) error {
 		RepeatInterval:             *repeatIntervalFlag,
 		RepeatCount:                *repeatCountFlag,
 		RepeatUntil:                *repeatUntilFlag,
+		Categories:                 splitAddresses(*categoriesFlag),
+		ShowAs:                     *showAsFlag,
+		Importance:                 *importanceFlag,
+		Sensitivity:                *sensitivityFlag,
 	})
 	if err != nil {
 		return err
@@ -2004,6 +2025,10 @@ func runCalendarUpdate(args []string) error {
 	repeatIntervalFlag := fs.Int("repeat-interval", 1, "重复间隔")
 	repeatCountFlag := fs.Int("repeat-count", 0, "重复次数")
 	repeatUntilFlag := fs.String("repeat-until", "", "重复结束日期 YYYY-MM-DD")
+	categoriesFlag := fs.String("categories", "", "事件类别，多个用逗号分隔")
+	showAsFlag := fs.String("show-as", "", "日程状态: free/tentative/busy/oof/workingElsewhere/unknown")
+	importanceFlag := fs.String("importance", "", "事件重要性: low/normal/high")
+	sensitivityFlag := fs.String("sensitivity", "", "事件敏感度: normal/personal/private/confidential")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2051,6 +2076,10 @@ func runCalendarUpdate(args []string) error {
 		RepeatInterval:             *repeatIntervalFlag,
 		RepeatCount:                *repeatCountFlag,
 		RepeatUntil:                *repeatUntilFlag,
+		Categories:                 splitAddresses(*categoriesFlag),
+		ShowAs:                     *showAsFlag,
+		Importance:                 *importanceFlag,
+		Sensitivity:                *sensitivityFlag,
 	})
 	if err != nil {
 		return err
@@ -2820,6 +2849,211 @@ func runMailPermanentDelete(args []string) error {
 	return nil
 }
 
+// runContactsCopy 复制联系人到指定文件夹。
+func runContactsCopy(args []string) error {
+	fs := flag.NewFlagSet("contacts copy", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "联系人 ID")
+	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID")
+	nameFlag := fs.String("name", "", "新联系人显示名称，不填时沿用原名")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*folderFlag) == "" {
+		return errors.New("用法: outlookctl contacts copy --id <联系人ID> --folder <文件夹> [--name <新名称>]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID, err := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+	if err != nil {
+		return err
+	}
+	copied, err := graph.CopyContact(ctx, loginResult.AccessToken, *idFlag, folderID, *nameFlag)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已复制: %s\n", copied.DisplayName)
+	fmt.Fprintf(os.Stdout, "新联系人 ID: %s\n", copied.ID)
+	return nil
+}
+
+// runCalendarCalendars 列出日历。
+func runCalendarCalendars(args []string) error {
+	fs := flag.NewFlagSet("calendar calendars", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	calendars, err := graph.ListCalendars(ctx, loginResult.AccessToken)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(calendars, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化日历列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历数量: %d\n", len(calendars))
+	for _, calendar := range calendars {
+		fmt.Fprintf(os.Stdout, "- %s | 默认=%v | 可编辑=%v | id=%s\n", calendar.Name, calendar.IsDefaultCalendar, calendar.CanEdit, calendar.ID)
+	}
+	return nil
+}
+
+// runContactsFolderRename 重命名联系人文件夹。
+func runContactsFolderRename(args []string) error {
+	fs := flag.NewFlagSet("contacts folder-rename", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "文件夹 ID")
+	nameFlag := fs.String("name", "", "新文件夹名称")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl contacts folder-rename --id <文件夹ID> --name <新名称>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.RenameContactFolder(ctx, loginResult.AccessToken, *idFlag, *nameFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人文件夹已重命名为: %s\n", *nameFlag)
+	return nil
+}
+
+// runMailDraftUpdate 更新草稿邮件。
+func runMailDraftUpdate(args []string) error {
+	fs := flag.NewFlagSet("mail draft-update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	toFlag := fs.String("to", "", "收件人，多个地址用逗号分隔")
+	ccFlag := fs.String("cc", "", "抄送，多个地址用逗号分隔")
+	bccFlag := fs.String("bcc", "", "密送，多个地址用逗号分隔")
+	subjectFlag := fs.String("subject", "", "邮件主题")
+	bodyFlag := fs.String("body", "", "邮件正文")
+	attachFlag := fs.String("attach", "", "附件路径，多个用逗号分隔")
+	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
+	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
+	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
+	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl mail draft-update --id <草稿ID> --to <邮箱> --subject <主题> --body <正文>")
+	}
+	to := splitAddresses(*toFlag)
+	if len(to) == 0 {
+		return errors.New("更新草稿时至少需要一个收件人")
+	}
+	attachments, err := graph.LoadMailAttachments(splitAddresses(*attachFlag))
+	if err != nil {
+		return err
+	}
+	contentType := "Text"
+	if *htmlFlag {
+		contentType = "HTML"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	detail, err := graph.UpdateDraft(ctx, loginResult.AccessToken, *idFlag, graph.SendMailInput{
+		To:                     to,
+		Cc:                     splitAddresses(*ccFlag),
+		Bcc:                    splitAddresses(*bccFlag),
+		Subject:                *subjectFlag,
+		Body:                   *bodyFlag,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             *importanceFlag,
+		RequestReadReceipt:     *readReceiptFlag,
+		RequestDeliveryReceipt: *deliveryReceiptFlag,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿已更新: %s\n", detail.Subject)
+	fmt.Fprintf(os.Stdout, "草稿 ID: %s\n", detail.ID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2842,6 +3076,8 @@ func printUsage() {
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
   outlookctl calendar list --days 7          查看未来日历事件
+  outlookctl calendar calendars              列出日历
+  outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
   outlookctl calendar delete --id <事件ID>  删除事件
@@ -2849,17 +3085,20 @@ func printUsage() {
   outlookctl contacts search --query <关键字>  搜索联系人
   outlookctl contacts folders               列出联系人文件夹
   outlookctl contacts folder-create --name <名称>  创建联系人文件夹
+  outlookctl contacts folder-rename --id <文件夹ID> --name <新名称>  重命名联系人文件夹
   outlookctl contacts folder-delete --id <文件夹ID>  删除联系人文件夹
   outlookctl contacts create --display-name <名称>  创建联系人
   outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
   outlookctl contacts delete --id <联系人ID>  删除联系人
   outlookctl contacts move --id <联系人ID> --folder <文件夹>  移动联系人
+  outlookctl contacts copy --id <联系人ID> --folder <文件夹>  复制联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件
   outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>  创建草稿
   outlookctl mail drafts                     列出草稿
   outlookctl mail draft-send <draft-id>      发送草稿
+  outlookctl mail draft-update --id <草稿ID>  更新草稿
   outlookctl mail folder-create --name <名称>  创建文件夹
   outlookctl mail folder-rename <id> --name <名称>  重命名文件夹
   outlookctl mail folder-delete <id>         删除文件夹

@@ -412,9 +412,9 @@ func GetContact(ctx context.Context, accessToken, contactID string) (*Contact, e
 	return &contact, nil
 }
 
-// MoveContact 把联系人移动到指定联系人文件夹。
-// Graph 没有直接移动联系人的接口，因此这里使用复制到目标文件夹再删除原联系人的方式。
-func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderID string) (*Contact, error) {
+// CopyContact 把联系人复制到指定联系人文件夹。
+// newDisplayName 为空时沿用原显示名称。
+func CopyContact(ctx context.Context, accessToken, contactID, destinationFolderID, newDisplayName string) (*Contact, error) {
 	contact, err := GetContact(ctx, accessToken, contactID)
 	if err != nil {
 		return nil, err
@@ -427,7 +427,16 @@ func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderI
 		EmailAddresses: contact.EmailAddresses,
 		BusinessPhones: contact.BusinessPhones,
 	}
-	moved, err := CreateContactInFolder(ctx, accessToken, destinationFolderID, input)
+	if strings.TrimSpace(newDisplayName) != "" {
+		input.DisplayName = strings.TrimSpace(newDisplayName)
+	}
+	return CreateContactInFolder(ctx, accessToken, destinationFolderID, input)
+}
+
+// MoveContact 把联系人移动到指定联系人文件夹。
+// Graph 没有直接移动联系人的接口，因此这里使用复制到目标文件夹再删除原联系人的方式。
+func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderID string) (*Contact, error) {
+	moved, err := CopyContact(ctx, accessToken, contactID, destinationFolderID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -435,4 +444,38 @@ func MoveContact(ctx context.Context, accessToken, contactID, destinationFolderI
 		return nil, fmt.Errorf("联系人已复制到目标文件夹，但删除原联系人失败: %w", err)
 	}
 	return moved, nil
+}
+
+// RenameContactFolder 重命名联系人文件夹。
+func RenameContactFolder(ctx context.Context, accessToken, folderID, displayName string) error {
+	folderID = strings.TrimSpace(folderID)
+	displayName = strings.TrimSpace(displayName)
+	if folderID == "" {
+		return fmt.Errorf("联系人文件夹 ID 不能为空")
+	}
+	if displayName == "" {
+		return fmt.Errorf("文件夹名称不能为空")
+	}
+	payload, err := json.Marshal(map[string]string{"displayName": displayName})
+	if err != nil {
+		return fmt.Errorf("序列化重命名联系人文件夹请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/contactFolders/" + url.PathEscape(folderID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("创建重命名联系人文件夹请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 重命名联系人文件夹失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 重命名联系人文件夹返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }

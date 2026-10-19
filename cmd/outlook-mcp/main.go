@@ -202,9 +202,10 @@ type mailCategoryArgs struct {
 
 // calendarListArgs 是 calendar_list tool 的输入参数。
 type calendarListArgs struct {
-	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Days    int    `json:"days,omitempty" jsonschema:"查询未来多少天，默认 7，最大 90"`
-	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少条事件，默认 50，最大 200"`
+	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Days     int    `json:"days,omitempty" jsonschema:"查询未来多少天，默认 7，最大 90"`
+	Top      int    `json:"top,omitempty" jsonschema:"最多返回多少条事件，默认 50，最大 200"`
+	Calendar string `json:"calendar,omitempty" jsonschema:"日历名称或 ID；不填时使用默认日历"`
 }
 
 // contactsListArgs 是 contacts_list tool 的输入参数。
@@ -230,6 +231,10 @@ type calendarCreateArgs struct {
 	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
 	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
 	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
+	Categories      []string `json:"categories,omitempty" jsonschema:"事件类别列表"`
+	ShowAs          string   `json:"showAs,omitempty" jsonschema:"日程状态: free/tentative/busy/oof/workingElsewhere/unknown"`
+	Importance      string   `json:"importance,omitempty" jsonschema:"事件重要性: low/normal/high"`
+	Sensitivity     string   `json:"sensitivity,omitempty" jsonschema:"事件敏感度: normal/personal/private/confidential"`
 }
 
 // calendarUpdateArgs 是 calendar_update tool 的输入参数。
@@ -249,6 +254,10 @@ type calendarUpdateArgs struct {
 	RepeatInterval  int      `json:"repeatInterval,omitempty" jsonschema:"重复间隔"`
 	RepeatCount     int      `json:"repeatCount,omitempty" jsonschema:"重复次数"`
 	RepeatUntil     string   `json:"repeatUntil,omitempty" jsonschema:"重复结束日期 YYYY-MM-DD"`
+	Categories      []string `json:"categories,omitempty" jsonschema:"事件类别列表"`
+	ShowAs          string   `json:"showAs,omitempty" jsonschema:"日程状态: free/tentative/busy/oof/workingElsewhere/unknown"`
+	Importance      string   `json:"importance,omitempty" jsonschema:"事件重要性: low/normal/high"`
+	Sensitivity     string   `json:"sensitivity,omitempty" jsonschema:"事件敏感度: normal/personal/private/confidential"`
 }
 
 // calendarDeleteArgs 是 calendar_delete tool 的输入参数。
@@ -370,6 +379,42 @@ type contactsMoveArgs struct {
 type mailPermanentDeleteArgs struct {
 	ID      string `json:"id" jsonschema:"邮件 ID"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsCopyArgs 是 contacts_copy tool 的输入参数。
+type contactsCopyArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	Folder  string `json:"folder" jsonschema:"目标联系人文件夹名称或 ID"`
+	Name    string `json:"name,omitempty" jsonschema:"新联系人显示名称，不填时沿用原名"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarCalendarsArgs 是 calendar_calendars_list tool 的输入参数。
+type calendarCalendarsArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsFolderRenameArgs 是 contacts_folder_rename tool 的输入参数。
+type contactsFolderRenameArgs struct {
+	ID      string `json:"id" jsonschema:"文件夹 ID"`
+	Name    string `json:"name" jsonschema:"新的文件夹名称"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftUpdateArgs 是 mail_draft_update tool 的输入参数。
+type mailDraftUpdateArgs struct {
+	ID                     string   `json:"id" jsonschema:"草稿 ID"`
+	To                     []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc                     []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc                    []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject                string   `json:"subject" jsonschema:"邮件主题"`
+	Body                   string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML                 bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
+	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
+	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
+	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -632,6 +677,26 @@ func main() {
 		Name:        "mail_permanent_delete",
 		Description: "永久删除邮件",
 	}, mailPermanentDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_copy",
+		Description: "复制联系人到指定文件夹",
+	}, contactsCopyHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_calendars_list",
+		Description: "列出日历",
+	}, calendarCalendarsHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_folder_rename",
+		Description: "重命名联系人文件夹",
+	}, contactsFolderRenameHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_draft_update",
+		Description: "更新草稿邮件",
+	}, mailDraftUpdateHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -1629,7 +1694,11 @@ func calendarListHandler(ctx context.Context, req *mcp.CallToolRequest, args cal
 
 	start := time.Now().UTC()
 	end := start.AddDate(0, 0, days)
-	events, err := graph.ListCalendarEvents(ctx, loginResult.AccessToken, start, end, args.Top)
+	calendarID, err := graph.ResolveCalendarID(ctx, loginResult.AccessToken, args.Calendar)
+	if err != nil {
+		return nil, nil, err
+	}
+	events, err := graph.ListCalendarEventsInCalendar(ctx, loginResult.AccessToken, calendarID, start, end, args.Top)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1743,6 +1812,10 @@ func calendarCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		RepeatInterval:             args.RepeatInterval,
 		RepeatCount:                args.RepeatCount,
 		RepeatUntil:                args.RepeatUntil,
+		Categories:                 args.Categories,
+		ShowAs:                     args.ShowAs,
+		Importance:                 args.Importance,
+		Sensitivity:                args.Sensitivity,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1800,6 +1873,10 @@ func calendarUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		RepeatInterval:             args.RepeatInterval,
 		RepeatCount:                args.RepeatCount,
 		RepeatUntil:                args.RepeatUntil,
+		Categories:                 args.Categories,
+		ShowAs:                     args.ShowAs,
+		Importance:                 args.Importance,
+		Sensitivity:                args.Sensitivity,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -2397,6 +2474,166 @@ func mailPermanentDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, a
 		"success":   true,
 		"account":   selected.Username,
 		"messageId": args.ID,
+	})
+}
+
+// contactsCopyHandler 复制联系人到指定文件夹。
+func contactsCopyHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsCopyArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Folder) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 和目标文件夹不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderID, err := graph.ResolveContactFolderID(ctx, loginResult.AccessToken, args.Folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	copied, err := graph.CopyContact(ctx, loginResult.AccessToken, args.ID, folderID, args.Name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":       true,
+		"account":       selected.Username,
+		"sourceId":      args.ID,
+		"copiedContact": copied,
+		"folder":        args.Folder,
+	})
+}
+
+// calendarCalendarsHandler 列出日历。
+func calendarCalendarsHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarCalendarsArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	calendars, err := graph.ListCalendars(ctx, loginResult.AccessToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"account":   selected.Username,
+		"calendars": calendars,
+	})
+}
+
+// contactsFolderRenameHandler 重命名联系人文件夹。
+func contactsFolderRenameHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsFolderRenameArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("文件夹 ID 和名称不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.RenameContactFolder(ctx, loginResult.AccessToken, args.ID, args.Name); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"folderId": args.ID,
+		"newName":  args.Name,
+	})
+}
+
+// mailDraftUpdateHandler 更新草稿邮件。
+func mailDraftUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftUpdateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("草稿 ID 不能为空")
+	}
+	if len(args.To) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个收件人")
+	}
+	attachments, err := graph.LoadMailAttachments(args.Attachments)
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	contentType := "Text"
+	if args.IsHTML {
+		contentType = "HTML"
+	}
+	detail, err := graph.UpdateDraft(ctx, loginResult.AccessToken, args.ID, graph.SendMailInput{
+		To:                     args.To,
+		Cc:                     args.Cc,
+		Bcc:                    args.Bcc,
+		Subject:                args.Subject,
+		Body:                   args.Body,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             args.Importance,
+		RequestReadReceipt:     args.RequestReadReceipt,
+		RequestDeliveryReceipt: args.RequestDeliveryReceipt,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"draft":   detail,
 	})
 }
 

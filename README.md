@@ -29,16 +29,21 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱规则管理
 - 主类别管理
 - 日历事件读取
+- 多日历列表与按日历查询事件
 - 日历事件创建、更新、删除
 - 日历参与人与提醒
+- 日历事件分类、状态、重要性、敏感度
 - 联系人读取
 - 联系人创建、更新、删除
 - 联系人搜索
 - 日历重复事件
 - 联系人文件夹管理
+- 联系人文件夹重命名
 - 在联系人文件夹中创建联系人
 - 联系人移动到文件夹
+- 联系人复制
 - 草稿创建、列表、发送
+- 草稿更新
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
 ## 环境要求
@@ -106,8 +111,11 @@ outlookctl mail master-categories
 outlookctl mail master-category-create --name "项目A" --color preset0
 outlookctl mail master-category-delete --id <类别ID>
 outlookctl calendar list --days 7
+outlookctl calendar calendars
+outlookctl calendar list --calendar "日历" --days 7
 outlookctl calendar create --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --attendees someone@example.com --reminder-minutes 10
+outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --categories "项目A,重要" --show-as busy --importance high --sensitivity private
 outlookctl calendar create --subject "每日站会" --start "2026-10-20T09:00:00" --end "2026-10-20T09:30:00" --repeat daily --repeat-count 5
 outlookctl calendar update --id <事件ID> --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar delete --id <事件ID>
@@ -116,10 +124,12 @@ outlookctl contacts list --folder "客户" --top 20
 outlookctl contacts search --query "张"
 outlookctl contacts folders
 outlookctl contacts folder-create --name "客户"
+outlookctl contacts folder-rename --id <文件夹ID> --name "新名称"
 outlookctl contacts folder-delete --id <文件夹ID>
 outlookctl contacts create --display-name "名称" --email someone@example.com
 outlookctl contacts create --folder "客户" --display-name "名称" --email someone@example.com
 outlookctl contacts move --id <联系人ID> --folder "客户"
+outlookctl contacts copy --id <联系人ID> --folder "客户" --name "副本名称"
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl mail reply <message-id> --body "回复内容"
@@ -129,6 +139,7 @@ outlookctl mail draft-create --to someone@example.com --subject "主题" --body 
 outlookctl mail draft-create --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail drafts
 outlookctl mail draft-send <draft-id>
+outlookctl mail draft-update --id <草稿ID> --to someone@example.com --subject "新主题" --body "新正文"
 outlookctl mail folder-create --name "新文件夹"
 outlookctl mail folder-rename <folder-id> --name "新名称"
 outlookctl mail folder-delete <folder-id>
@@ -165,6 +176,7 @@ outlookctl mail importance <message-id> --level high
 - `mail_master_category_create`
 - `mail_master_category_delete`
 - `calendar_list`
+- `calendar_calendars_list`
 - `calendar_create`
 - `calendar_update`
 - `calendar_delete`
@@ -176,13 +188,16 @@ outlookctl mail importance <message-id> --level high
 - `contacts_folders_list`
 - `contacts_folder_create`
 - `contacts_folder_delete`
+- `contacts_folder_rename`
 - `contacts_move`
+- `contacts_copy`
 - `mail_reply`
 - `mail_reply_all`
 - `mail_forward`
 - `mail_draft_create`
 - `mail_drafts_list`
 - `mail_draft_send`
+- `mail_draft_update`
 - `mail_folder_create`
 - `mail_folder_rename`
 - `mail_folder_delete`

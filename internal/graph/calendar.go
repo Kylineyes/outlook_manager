@@ -40,25 +40,36 @@ type CalendarEvent struct {
 	IsAllDay    bool             `json:"isAllDay"`
 	WebLink     string           `json:"webLink"`
 	BodyPreview string           `json:"bodyPreview"`
+	Categories  []string         `json:"categories,omitempty"`
+	ShowAs      string           `json:"showAs,omitempty"`
+	Importance  string           `json:"importance,omitempty"`
+	Sensitivity string           `json:"sensitivity,omitempty"`
 }
 
-// ListCalendarEvents 读取指定时间范围内的日历事件。
+// ListCalendarEvents 读取默认日历在指定时间范围内的事件。
 func ListCalendarEvents(ctx context.Context, accessToken string, start, end time.Time, top int) ([]CalendarEvent, error) {
+	return ListCalendarEventsInCalendar(ctx, accessToken, "", start, end, top)
+}
+
+// ListCalendarEventsInCalendar 读取指定日历在时间范围内的事件。
+// calendarID 为空时读取默认日历。
+func ListCalendarEventsInCalendar(ctx context.Context, accessToken, calendarID string, start, end time.Time, top int) ([]CalendarEvent, error) {
 	if top <= 0 {
 		top = 50
 	}
 	if top > 200 {
 		top = 200
 	}
-
 	query := url.Values{}
 	query.Set("startDateTime", start.UTC().Format(time.RFC3339))
 	query.Set("endDateTime", end.UTC().Format(time.RFC3339))
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview")
+	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity")
 	query.Set("$orderby", "start/dateTime")
 	endpoint := graphBaseURL + "/me/calendarView?" + query.Encode()
-
+	if strings.TrimSpace(calendarID) != "" {
+		endpoint = graphBaseURL + "/me/calendars/" + url.PathEscape(calendarID) + "/calendarView?" + query.Encode()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建日历事件请求失败: %w", err)
@@ -66,18 +77,15 @@ func ListCalendarEvents(ctx context.Context, accessToken string, start, end time
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Prefer", `outlook.timezone="UTC"`)
-
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 日历事件失败: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("Graph 日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-
 	var result struct {
 		Value []CalendarEvent `json:"value"`
 	}
@@ -87,7 +95,6 @@ func ListCalendarEvents(ctx context.Context, accessToken string, start, end time
 	return result.Value, nil
 }
 
-// CalendarEventInput 是创建或更新日历事件的输入。
 type CalendarEventInput struct {
 	Subject                    string
 	Body                       string
@@ -102,6 +109,10 @@ type CalendarEventInput struct {
 	RepeatInterval             int
 	RepeatCount                int
 	RepeatUntil                string
+	Categories                 []string
+	ShowAs                     string
+	Importance                 string
+	Sensitivity                string
 }
 
 // buildCalendarEventPayload 构造 Graph 日历事件请求体。
@@ -133,6 +144,36 @@ func buildCalendarEventPayload(input CalendarEventInput) (map[string]any, error)
 			"timeZone": timeZone,
 		},
 		"isAllDay": input.IsAllDay,
+	}
+	if len(input.Categories) > 0 {
+		payload["categories"] = input.Categories
+	}
+	if strings.TrimSpace(input.ShowAs) != "" {
+		showAs := strings.ToLower(strings.TrimSpace(input.ShowAs))
+		switch showAs {
+		case "free", "tentative", "busy", "oof", "workingelsewhere", "unknown":
+			payload["showAs"] = showAs
+		default:
+			return nil, fmt.Errorf("不支持的日程状态: %s", input.ShowAs)
+		}
+	}
+	if strings.TrimSpace(input.Importance) != "" {
+		importance := strings.ToLower(strings.TrimSpace(input.Importance))
+		switch importance {
+		case "low", "normal", "high":
+			payload["importance"] = importance
+		default:
+			return nil, fmt.Errorf("不支持的事件重要性: %s", input.Importance)
+		}
+	}
+	if strings.TrimSpace(input.Sensitivity) != "" {
+		sensitivity := strings.ToLower(strings.TrimSpace(input.Sensitivity))
+		switch sensitivity {
+		case "normal", "personal", "private", "confidential":
+			payload["sensitivity"] = sensitivity
+		default:
+			return nil, fmt.Errorf("不支持的事件敏感度: %s", input.Sensitivity)
+		}
 	}
 	if strings.TrimSpace(input.Location) != "" {
 		payload["location"] = map[string]string{"displayName": input.Location}
@@ -319,4 +360,61 @@ func DeleteCalendarEvent(ctx context.Context, accessToken, eventID string) error
 		return fmt.Errorf("Graph 删除日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+// Calendar 表示一个 Outlook 日历。
+type Calendar struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Color             string `json:"color"`
+	CanEdit           bool   `json:"canEdit"`
+	IsDefaultCalendar bool   `json:"isDefaultCalendar"`
+}
+
+// ListCalendars 读取当前账号的日历列表。
+func ListCalendars(ctx context.Context, accessToken string) ([]Calendar, error) {
+	query := url.Values{}
+	query.Set("$select", "id,name,color,canEdit,isDefaultCalendar")
+	query.Set("$orderby", "name")
+	endpoint := graphBaseURL + "/me/calendars?" + query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建日历列表请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 日历列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 日历列表返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result struct {
+		Value []Calendar `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 Graph 日历列表失败: %w", err)
+	}
+	return result.Value, nil
+}
+
+// ResolveCalendarID 按名称查找日历 ID；找不到时返回原始值交给 Graph 处理。
+func ResolveCalendarID(ctx context.Context, accessToken, target string) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", nil
+	}
+	calendars, err := ListCalendars(ctx, accessToken)
+	if err != nil {
+		return "", err
+	}
+	for _, calendar := range calendars {
+		if strings.EqualFold(calendar.Name, target) || calendar.ID == target {
+			return calendar.ID, nil
+		}
+	}
+	return target, nil
 }
