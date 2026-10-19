@@ -51,15 +51,19 @@ type mailSearchArgs struct {
 
 // mailSendArgs 是 mail_send tool 的输入参数。
 type mailSendArgs struct {
-	To              []string `json:"to" jsonschema:"收件人邮箱列表"`
-	Cc              []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
-	Bcc             []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
-	Subject         string   `json:"subject" jsonschema:"邮件主题"`
-	Body            string   `json:"body" jsonschema:"邮件正文"`
-	IsHTML          bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
-	SaveToSentItems bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
-	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Attachments     []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	To                     []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc                     []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc                    []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject                string   `json:"subject" jsonschema:"邮件主题"`
+	Body                   string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML                 bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	SaveToSentItems        bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
+	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
+	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
+	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
+	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
 
 // mailMarkArgs 是 mail_mark_read / mail_mark_unread tool 的输入参数。
@@ -124,14 +128,18 @@ type mailForwardArgs struct {
 
 // mailDraftCreateArgs 是 mail_draft_create tool 的输入参数。
 type mailDraftCreateArgs struct {
-	To          []string `json:"to" jsonschema:"收件人邮箱列表"`
-	Cc          []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
-	Bcc         []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
-	Subject     string   `json:"subject" jsonschema:"邮件主题"`
-	Body        string   `json:"body" jsonschema:"邮件正文"`
-	IsHTML      bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
-	Account     string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Attachments []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	To                     []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc                     []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc                    []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject                string   `json:"subject" jsonschema:"邮件主题"`
+	Body                   string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML                 bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
+	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
+	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
+	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
 
 // mailDraftsArgs 是 mail_drafts_list tool 的输入参数。
@@ -355,6 +363,12 @@ type mailMasterCategoryDeleteArgs struct {
 type contactsMoveArgs struct {
 	ID      string `json:"id" jsonschema:"联系人 ID"`
 	Folder  string `json:"folder" jsonschema:"目标联系人文件夹名称或 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailPermanentDeleteArgs 是 mail_permanent_delete tool 的输入参数。
+type mailPermanentDeleteArgs struct {
+	ID      string `json:"id" jsonschema:"邮件 ID"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
@@ -614,6 +628,11 @@ func main() {
 		Description: "把联系人移动到指定文件夹",
 	}, contactsMoveHandler)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_permanent_delete",
+		Description: "永久删除邮件",
+	}, mailPermanentDeleteHandler)
+
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
 	}
@@ -820,14 +839,17 @@ func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSen
 	}
 
 	input := graph.SendMailInput{
-		To:              args.To,
-		Cc:              args.Cc,
-		Bcc:             args.Bcc,
-		Subject:         args.Subject,
-		Body:            args.Body,
-		ContentType:     contentType,
-		Attachments:     attachments,
-		SaveToSentItems: args.SaveToSentItems,
+		To:                     args.To,
+		Cc:                     args.Cc,
+		Bcc:                    args.Bcc,
+		Subject:                args.Subject,
+		Body:                   args.Body,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             args.Importance,
+		RequestReadReceipt:     args.RequestReadReceipt,
+		RequestDeliveryReceipt: args.RequestDeliveryReceipt,
+		SaveToSentItems:        args.SaveToSentItems,
 	}
 	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
 		return nil, nil, err
@@ -1202,13 +1224,16 @@ func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 	}
 
 	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, graph.SendMailInput{
-		To:          args.To,
-		Cc:          args.Cc,
-		Bcc:         args.Bcc,
-		Subject:     args.Subject,
-		Body:        args.Body,
-		ContentType: contentType,
-		Attachments: attachments,
+		To:                     args.To,
+		Cc:                     args.Cc,
+		Bcc:                    args.Bcc,
+		Subject:                args.Subject,
+		Body:                   args.Body,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             args.Importance,
+		RequestReadReceipt:     args.RequestReadReceipt,
+		RequestDeliveryReceipt: args.RequestDeliveryReceipt,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -2339,6 +2364,39 @@ func contactsMoveHandler(ctx context.Context, req *mcp.CallToolRequest, args con
 		"oldContactId": args.ID,
 		"newContact":   moved,
 		"folder":       args.Folder,
+	})
+}
+
+// mailPermanentDeleteHandler 永久删除邮件。
+func mailPermanentDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailPermanentDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.PermanentDeleteMessage(ctx, loginResult.AccessToken, args.ID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":   true,
+		"account":   selected.Username,
+		"messageId": args.ID,
 	})
 }
 

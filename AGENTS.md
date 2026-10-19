@@ -67,6 +67,7 @@ outlook_manager/
 - `outlookctl mail folders`
 - `outlookctl mail move`
 - `outlookctl mail delete`
+- `outlookctl mail permanent-delete`
 - `outlookctl mail attachments`
 - `outlookctl mail attachment-save`
 - `outlookctl mail reply`
@@ -103,7 +104,7 @@ outlook_manager/
 - `outlookctl contacts create`
 - `outlookctl contacts update`
 - `outlookctl contacts delete`
-- 对应的 MCP 工具：`account_list`、`auth_status`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_move`、`mail_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`、`mail_message_categories`、`mail_category_add`、`mail_category_remove`、`mail_rules_list`、`mail_rule_create`、`mail_rule_delete`、`mail_master_categories_list`、`mail_master_category_create`、`mail_master_category_delete`、`calendar_list`、`contacts_list`、`calendar_create`、`calendar_update`、`calendar_delete`、`contacts_create`、`contacts_update`、`contacts_delete`、`contacts_search`、`contacts_folders_list`、`contacts_folder_create`、`contacts_folder_delete`、`contacts_move`
+- 对应的 MCP 工具：`account_list`、`auth_status`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_move`、`mail_delete`、`mail_permanent_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`、`mail_message_categories`、`mail_category_add`、`mail_category_remove`、`mail_rules_list`、`mail_rule_create`、`mail_rule_delete`、`mail_master_categories_list`、`mail_master_category_create`、`mail_master_category_delete`、`calendar_list`、`contacts_list`、`calendar_create`、`calendar_update`、`calendar_delete`、`contacts_create`、`contacts_update`、`contacts_delete`、`contacts_search`、`contacts_folders_list`、`contacts_folder_create`、`contacts_folder_delete`、`contacts_move`
 
 ## 4. 代码编写准则
 

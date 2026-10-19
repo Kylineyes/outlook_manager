@@ -20,9 +20,11 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件文件夹创建、重命名、删除
 - 邮件移动
 - 邮件删除（移动到已删除邮件）
+- 邮件永久删除
 - 邮件附件列表
 - 邮件附件下载
 - 邮件发送附件
+- 邮件发送选项（重要性、已读回执、送达回执）
 - 邮件类别查看、添加、移除
 - 收件箱规则管理
 - 主类别管理
@@ -85,11 +87,13 @@ outlookctl mail read <message-id>
 outlookctl mail search --query "关键字"
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文"
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
+outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --importance high --read-receipt --delivery-receipt
 outlookctl mail mark-read <message-id>
 outlookctl mail mark-unread <message-id>
 outlookctl mail folders
 outlookctl mail move <message-id> --folder 存档
 outlookctl mail delete <message-id>
+outlookctl mail permanent-delete --id <邮件ID>
 outlookctl mail attachments <message-id>
 outlookctl mail attachment-save <message-id> --attachment <attachment-id> --out C:\temp\file.pdf
 outlookctl mail message-categories <message-id>
@@ -148,6 +152,7 @@ outlookctl mail importance <message-id> --level high
 - `mail_folders_list`
 - `mail_move`
 - `mail_delete`
+- `mail_permanent_delete`
 - `mail_attachments_list`
 - `mail_attachment_save`
 - `mail_message_categories`

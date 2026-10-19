@@ -268,6 +268,8 @@ func runMail(args []string) error {
 		return runMailMove(args[1:])
 	case "delete":
 		return runMailDelete(args[1:])
+	case "permanent-delete":
+		return runMailPermanentDelete(args[1:])
 	case "attachments":
 		return runMailAttachments(args[1:])
 	case "attachment-save":
@@ -596,6 +598,9 @@ func runMailSend(args []string) error {
 	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	noSaveFlag := fs.Bool("no-save", false, "不保存到已发送邮件")
+	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
+	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
+	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -644,14 +649,17 @@ func runMailSend(args []string) error {
 		contentType = "HTML"
 	}
 	input := graph.SendMailInput{
-		To:              to,
-		Cc:              splitAddresses(*ccFlag),
-		Bcc:             splitAddresses(*bccFlag),
-		Subject:         *subjectFlag,
-		Body:            body,
-		ContentType:     contentType,
-		SaveToSentItems: !*noSaveFlag,
-		Attachments:     attachments,
+		To:                     to,
+		Cc:                     splitAddresses(*ccFlag),
+		Bcc:                    splitAddresses(*bccFlag),
+		Subject:                *subjectFlag,
+		Body:                   body,
+		ContentType:            contentType,
+		SaveToSentItems:        !*noSaveFlag,
+		Attachments:            attachments,
+		Importance:             *importanceFlag,
+		RequestReadReceipt:     *readReceiptFlag,
+		RequestDeliveryReceipt: *deliveryReceiptFlag,
 	}
 	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
 		return err
@@ -1171,6 +1179,9 @@ func runMailDraftCreate(args []string) error {
 	attachFlag := fs.String("attach", "", "附件路径，多个用逗号分隔")
 	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
+	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
+	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1210,13 +1221,16 @@ func runMailDraftCreate(args []string) error {
 		contentType = "HTML"
 	}
 	input := graph.SendMailInput{
-		To:          to,
-		Cc:          splitAddresses(*ccFlag),
-		Bcc:         splitAddresses(*bccFlag),
-		Subject:     *subjectFlag,
-		Body:        *bodyFlag,
-		ContentType: contentType,
-		Attachments: attachments,
+		To:                     to,
+		Cc:                     splitAddresses(*ccFlag),
+		Bcc:                    splitAddresses(*bccFlag),
+		Subject:                *subjectFlag,
+		Body:                   *bodyFlag,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             *importanceFlag,
+		RequestReadReceipt:     *readReceiptFlag,
+		RequestDeliveryReceipt: *deliveryReceiptFlag,
 	}
 	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, input)
 	if err != nil {
@@ -2768,6 +2782,44 @@ func runContactsMove(args []string) error {
 	return nil
 }
 
+// runMailPermanentDelete 永久删除邮件。
+func runMailPermanentDelete(args []string) error {
+	fs := flag.NewFlagSet("mail permanent-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "邮件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl mail permanent-delete --id <邮件ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.PermanentDeleteMessage(ctx, loginResult.AccessToken, *idFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "邮件已永久删除: %s\n", *idFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -2786,6 +2838,7 @@ func printUsage() {
   outlookctl mail folders                    列出邮件文件夹
   outlookctl mail move <message-id> --folder <文件夹>  移动邮件
   outlookctl mail delete <message-id>        删除邮件
+  outlookctl mail permanent-delete --id <邮件ID>  永久删除邮件
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
   outlookctl calendar list --days 7          查看未来日历事件

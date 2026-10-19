@@ -26,19 +26,23 @@ type Recipient struct {
 // MessageDetail 表示单封邮件的完整详情。
 // 它比 Message 多出正文、收件人、会话 ID 等字段。
 type MessageDetail struct {
-	ID                string      `json:"id"`
-	Subject           string      `json:"subject"`
-	ReceivedDateTime  time.Time   `json:"receivedDateTime"`
-	IsRead            bool        `json:"isRead"`
-	WebLink           string      `json:"webLink"`
-	BodyPreview       string      `json:"bodyPreview"`
-	Body              ItemBody    `json:"body"`
-	From              MessageFrom `json:"from"`
-	ToRecipients      []Recipient `json:"toRecipients"`
-	CcRecipients      []Recipient `json:"ccRecipients"`
-	BccRecipients     []Recipient `json:"bccRecipients"`
-	InternetMessageID string      `json:"internetMessageId"`
-	ConversationID    string      `json:"conversationId"`
+	ID                         string      `json:"id"`
+	Subject                    string      `json:"subject"`
+	ReceivedDateTime           time.Time   `json:"receivedDateTime"`
+	IsRead                     bool        `json:"isRead"`
+	WebLink                    string      `json:"webLink"`
+	BodyPreview                string      `json:"bodyPreview"`
+	Body                       ItemBody    `json:"body"`
+	From                       MessageFrom `json:"from"`
+	ToRecipients               []Recipient `json:"toRecipients"`
+	CcRecipients               []Recipient `json:"ccRecipients"`
+	BccRecipients              []Recipient `json:"bccRecipients"`
+	InternetMessageID          string      `json:"internetMessageId"`
+	ConversationID             string      `json:"conversationId"`
+	Importance                 string      `json:"importance,omitempty"`
+	Sensitivity                string      `json:"sensitivity,omitempty"`
+	IsReadReceiptRequested     bool        `json:"isReadReceiptRequested"`
+	IsDeliveryReceiptRequested bool        `json:"isDeliveryReceiptRequested"`
 }
 
 // GetMessage 根据邮件 ID 读取单封邮件详情。
@@ -48,7 +52,7 @@ func GetMessage(ctx context.Context, accessToken, messageID string) (*MessageDet
 	}
 
 	query := url.Values{}
-	query.Set("$select", "id,subject,receivedDateTime,isRead,webLink,bodyPreview,body,from,toRecipients,ccRecipients,bccRecipients,internetMessageId,conversationId")
+	query.Set("$select", "id,subject,receivedDateTime,isRead,webLink,bodyPreview,body,from,toRecipients,ccRecipients,bccRecipients,internetMessageId,conversationId,importance,isReadReceiptRequested,isDeliveryReceiptRequested")
 	endpoint := graphBaseURL + "/me/messages/" + url.PathEscape(messageID) + "?" + query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
