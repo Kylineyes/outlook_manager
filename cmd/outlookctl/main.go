@@ -286,6 +286,8 @@ func runMail(args []string) error {
 		return runMailDrafts(args[1:])
 	case "draft-send":
 		return runMailDraftSend(args[1:])
+	case "draft-update":
+		return runMailDraftUpdate(args[1:])
 	case "folder-create":
 		return runMailFolderCreate(args[1:])
 	case "folder-rename":
@@ -2979,6 +2981,79 @@ func runContactsFolderRename(args []string) error {
 	return nil
 }
 
+// runMailDraftUpdate 更新草稿邮件。
+func runMailDraftUpdate(args []string) error {
+	fs := flag.NewFlagSet("mail draft-update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	toFlag := fs.String("to", "", "收件人，多个地址用逗号分隔")
+	ccFlag := fs.String("cc", "", "抄送，多个地址用逗号分隔")
+	bccFlag := fs.String("bcc", "", "密送，多个地址用逗号分隔")
+	subjectFlag := fs.String("subject", "", "邮件主题")
+	bodyFlag := fs.String("body", "", "邮件正文")
+	attachFlag := fs.String("attach", "", "附件路径，多个用逗号分隔")
+	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
+	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
+	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
+	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl mail draft-update --id <草稿ID> --to <邮箱> --subject <主题> --body <正文>")
+	}
+	to := splitAddresses(*toFlag)
+	if len(to) == 0 {
+		return errors.New("更新草稿时至少需要一个收件人")
+	}
+	attachments, err := graph.LoadMailAttachments(splitAddresses(*attachFlag))
+	if err != nil {
+		return err
+	}
+	contentType := "Text"
+	if *htmlFlag {
+		contentType = "HTML"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	detail, err := graph.UpdateDraft(ctx, loginResult.AccessToken, *idFlag, graph.SendMailInput{
+		To:                     to,
+		Cc:                     splitAddresses(*ccFlag),
+		Bcc:                    splitAddresses(*bccFlag),
+		Subject:                *subjectFlag,
+		Body:                   *bodyFlag,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             *importanceFlag,
+		RequestReadReceipt:     *readReceiptFlag,
+		RequestDeliveryReceipt: *deliveryReceiptFlag,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿已更新: %s\n", detail.Subject)
+	fmt.Fprintf(os.Stdout, "草稿 ID: %s\n", detail.ID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3023,6 +3098,7 @@ func printUsage() {
   outlookctl mail draft-create --to <邮箱> --subject <主题> --body <正文>  创建草稿
   outlookctl mail drafts                     列出草稿
   outlookctl mail draft-send <draft-id>      发送草稿
+  outlookctl mail draft-update --id <草稿ID>  更新草稿
   outlookctl mail folder-create --name <名称>  创建文件夹
   outlookctl mail folder-rename <id> --name <名称>  重命名文件夹
   outlookctl mail folder-delete <id>         删除文件夹
