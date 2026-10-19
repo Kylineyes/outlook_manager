@@ -13,14 +13,18 @@ import (
 
 // SendMailInput 是发送邮件所需的输入。
 type SendMailInput struct {
-	To              []string
-	Cc              []string
-	Bcc             []string
-	Subject         string
-	Body            string
-	ContentType     string
-	SaveToSentItems bool
-	Attachments     []MailAttachmentInput
+	To                     []string
+	Cc                     []string
+	Bcc                    []string
+	Subject                string
+	Body                   string
+	ContentType            string
+	SaveToSentItems        bool
+	Attachments            []MailAttachmentInput
+	Importance             string
+	Sensitivity            string
+	RequestReadReceipt     bool
+	RequestDeliveryReceipt bool
 }
 
 // buildMessage 把发送参数转换为 Microsoft Graph 邮件资源结构。
@@ -64,6 +68,30 @@ func buildMessage(input SendMailInput) (map[string]any, error) {
 	}
 	if len(ccRecipients) > 0 {
 		message["ccRecipients"] = ccRecipients
+	}
+	if strings.TrimSpace(input.Importance) != "" {
+		importance := strings.ToLower(strings.TrimSpace(input.Importance))
+		switch importance {
+		case "low", "normal", "high":
+			message["importance"] = importance
+		default:
+			return nil, fmt.Errorf("不支持的邮件重要性: %s", input.Importance)
+		}
+	}
+	if strings.TrimSpace(input.Sensitivity) != "" {
+		sensitivity := strings.ToLower(strings.TrimSpace(input.Sensitivity))
+		switch sensitivity {
+		case "normal", "personal", "private", "confidential":
+			message["sensitivity"] = sensitivity
+		default:
+			return nil, fmt.Errorf("不支持的邮件敏感度: %s", input.Sensitivity)
+		}
+	}
+	if input.RequestReadReceipt {
+		message["isReadReceiptRequested"] = true
+	}
+	if input.RequestDeliveryReceipt {
+		message["isDeliveryReceiptRequested"] = true
 	}
 	if len(input.Attachments) > 0 {
 		attachments := make([]map[string]any, 0, len(input.Attachments))

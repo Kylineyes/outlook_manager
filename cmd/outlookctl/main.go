@@ -596,6 +596,9 @@ func runMailSend(args []string) error {
 	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	noSaveFlag := fs.Bool("no-save", false, "不保存到已发送邮件")
+	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
+	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
+	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -644,14 +647,17 @@ func runMailSend(args []string) error {
 		contentType = "HTML"
 	}
 	input := graph.SendMailInput{
-		To:              to,
-		Cc:              splitAddresses(*ccFlag),
-		Bcc:             splitAddresses(*bccFlag),
-		Subject:         *subjectFlag,
-		Body:            body,
-		ContentType:     contentType,
-		SaveToSentItems: !*noSaveFlag,
-		Attachments:     attachments,
+		To:                     to,
+		Cc:                     splitAddresses(*ccFlag),
+		Bcc:                    splitAddresses(*bccFlag),
+		Subject:                *subjectFlag,
+		Body:                   body,
+		ContentType:            contentType,
+		SaveToSentItems:        !*noSaveFlag,
+		Attachments:            attachments,
+		Importance:             *importanceFlag,
+		RequestReadReceipt:     *readReceiptFlag,
+		RequestDeliveryReceipt: *deliveryReceiptFlag,
 	}
 	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
 		return err
@@ -1171,6 +1177,9 @@ func runMailDraftCreate(args []string) error {
 	attachFlag := fs.String("attach", "", "附件路径，多个用逗号分隔")
 	htmlFlag := fs.Bool("html", false, "正文使用 HTML 格式")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
+	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
+	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1210,13 +1219,16 @@ func runMailDraftCreate(args []string) error {
 		contentType = "HTML"
 	}
 	input := graph.SendMailInput{
-		To:          to,
-		Cc:          splitAddresses(*ccFlag),
-		Bcc:         splitAddresses(*bccFlag),
-		Subject:     *subjectFlag,
-		Body:        *bodyFlag,
-		ContentType: contentType,
-		Attachments: attachments,
+		To:                     to,
+		Cc:                     splitAddresses(*ccFlag),
+		Bcc:                    splitAddresses(*bccFlag),
+		Subject:                *subjectFlag,
+		Body:                   *bodyFlag,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             *importanceFlag,
+		RequestReadReceipt:     *readReceiptFlag,
+		RequestDeliveryReceipt: *deliveryReceiptFlag,
 	}
 	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, input)
 	if err != nil {

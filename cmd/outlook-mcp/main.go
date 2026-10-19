@@ -51,15 +51,19 @@ type mailSearchArgs struct {
 
 // mailSendArgs 是 mail_send tool 的输入参数。
 type mailSendArgs struct {
-	To              []string `json:"to" jsonschema:"收件人邮箱列表"`
-	Cc              []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
-	Bcc             []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
-	Subject         string   `json:"subject" jsonschema:"邮件主题"`
-	Body            string   `json:"body" jsonschema:"邮件正文"`
-	IsHTML          bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
-	SaveToSentItems bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
-	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Attachments     []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	To                     []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc                     []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc                    []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject                string   `json:"subject" jsonschema:"邮件主题"`
+	Body                   string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML                 bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	SaveToSentItems        bool     `json:"saveToSentItems,omitempty" jsonschema:"是否保存到已发送邮件"`
+	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
+	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
+	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
+	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
 
 // mailMarkArgs 是 mail_mark_read / mail_mark_unread tool 的输入参数。
@@ -124,14 +128,18 @@ type mailForwardArgs struct {
 
 // mailDraftCreateArgs 是 mail_draft_create tool 的输入参数。
 type mailDraftCreateArgs struct {
-	To          []string `json:"to" jsonschema:"收件人邮箱列表"`
-	Cc          []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
-	Bcc         []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
-	Subject     string   `json:"subject" jsonschema:"邮件主题"`
-	Body        string   `json:"body" jsonschema:"邮件正文"`
-	IsHTML      bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
-	Account     string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Attachments []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	To                     []string `json:"to" jsonschema:"收件人邮箱列表"`
+	Cc                     []string `json:"cc,omitempty" jsonschema:"抄送邮箱列表"`
+	Bcc                    []string `json:"bcc,omitempty" jsonschema:"密送邮箱列表"`
+	Subject                string   `json:"subject" jsonschema:"邮件主题"`
+	Body                   string   `json:"body" jsonschema:"邮件正文"`
+	IsHTML                 bool     `json:"isHtml,omitempty" jsonschema:"正文是否为 HTML，默认 false"`
+	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
+	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
+	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
+	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
+	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
 
 // mailDraftsArgs 是 mail_drafts_list tool 的输入参数。
@@ -820,14 +828,17 @@ func mailSendHandler(ctx context.Context, req *mcp.CallToolRequest, args mailSen
 	}
 
 	input := graph.SendMailInput{
-		To:              args.To,
-		Cc:              args.Cc,
-		Bcc:             args.Bcc,
-		Subject:         args.Subject,
-		Body:            args.Body,
-		ContentType:     contentType,
-		Attachments:     attachments,
-		SaveToSentItems: args.SaveToSentItems,
+		To:                     args.To,
+		Cc:                     args.Cc,
+		Bcc:                    args.Bcc,
+		Subject:                args.Subject,
+		Body:                   args.Body,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             args.Importance,
+		RequestReadReceipt:     args.RequestReadReceipt,
+		RequestDeliveryReceipt: args.RequestDeliveryReceipt,
+		SaveToSentItems:        args.SaveToSentItems,
 	}
 	if err := graph.SendMail(ctx, loginResult.AccessToken, input); err != nil {
 		return nil, nil, err
@@ -1202,13 +1213,16 @@ func mailDraftCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 	}
 
 	draftID, err := graph.CreateDraft(ctx, loginResult.AccessToken, graph.SendMailInput{
-		To:          args.To,
-		Cc:          args.Cc,
-		Bcc:         args.Bcc,
-		Subject:     args.Subject,
-		Body:        args.Body,
-		ContentType: contentType,
-		Attachments: attachments,
+		To:                     args.To,
+		Cc:                     args.Cc,
+		Bcc:                    args.Bcc,
+		Subject:                args.Subject,
+		Body:                   args.Body,
+		ContentType:            contentType,
+		Attachments:            attachments,
+		Importance:             args.Importance,
+		RequestReadReceipt:     args.RequestReadReceipt,
+		RequestDeliveryReceipt: args.RequestDeliveryReceipt,
 	})
 	if err != nil {
 		return nil, nil, err
