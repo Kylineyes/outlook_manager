@@ -31,6 +31,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 日历事件读取
 - 日历事件创建、更新、删除
 - 日历参与人与提醒
+- 日历事件分类、状态、重要性、敏感度
 - 联系人读取
 - 联系人创建、更新、删除
 - 联系人搜索
@@ -108,6 +109,7 @@ outlookctl mail master-category-delete --id <类别ID>
 outlookctl calendar list --days 7
 outlookctl calendar create --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --attendees someone@example.com --reminder-minutes 10
+outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --categories "项目A,重要" --show-as busy --importance high --sensitivity private
 outlookctl calendar create --subject "每日站会" --start "2026-10-20T09:00:00" --end "2026-10-20T09:30:00" --repeat daily --repeat-count 5
 outlookctl calendar update --id <事件ID> --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar delete --id <事件ID>
