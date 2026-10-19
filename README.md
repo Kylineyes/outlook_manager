@@ -45,6 +45,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 联系人扩展资料（昵称、生日、备注、部门、办公室、职业、主页）
 - 联系人地址（家庭、工作、其他）
 - 联系人永久删除
+- 联系人照片读取与上传
 - 草稿创建、列表、发送
 - 草稿更新
 - 邮件列表、搜索、详情、附件对应的 MCP tools
@@ -137,6 +138,8 @@ outlookctl contacts copy --id <联系人ID> --folder "客户" --name "副本名�
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl contacts permanent-delete --id <联系人ID>
+outlookctl contacts photo-set --id <联系人ID> --file C:\temp\photo.jpg
+outlookctl contacts photo-get --id <联系人ID> --out C:\temp\photo.jpg
 outlookctl contacts create --display-name "名称" --email someone@example.com --home-address "家庭路1号|上海|上海|200000|中国"
 outlookctl mail reply <message-id> --body "回复内容"
 outlookctl mail reply-all <message-id> --body "回复内容"
@@ -191,6 +194,8 @@ outlookctl mail importance <message-id> --level high
 - `contacts_update`
 - `contacts_delete`
 - `contacts_permanent_delete`
+- `contacts_photo_get`
+- `contacts_photo_set`
 - `contacts_search`
 - `contacts_folders_list`
 - `contacts_folder_create`
