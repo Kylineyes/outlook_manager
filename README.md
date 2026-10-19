@@ -42,6 +42,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 在联系人文件夹中创建联系人
 - 联系人移动到文件夹
 - 联系人复制
+- 联系人扩展资料（昵称、生日、备注、部门、办公室、职业、主页）
 - 草稿创建、列表、发送
 - 草稿更新
 - 邮件列表、搜索、详情、附件对应的 MCP tools
@@ -127,6 +128,7 @@ outlookctl contacts folder-create --name "客户"
 outlookctl contacts folder-rename --id <文件夹ID> --name "新名称"
 outlookctl contacts folder-delete --id <文件夹ID>
 outlookctl contacts create --display-name "名称" --email someone@example.com
+outlookctl contacts create --display-name "名称" --email someone@example.com --nickname "昵称" --birthday "1990-01-02" --department "研发部" --office "A栋101" --profession "工程师" --website "https://example.com"
 outlookctl contacts create --folder "客户" --display-name "名称" --email someone@example.com
 outlookctl contacts move --id <联系人ID> --folder "客户"
 outlookctl contacts copy --id <联系人ID> --folder "客户" --name "副本名称"

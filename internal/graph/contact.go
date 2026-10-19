@@ -20,13 +20,20 @@ type ContactEmailAddress struct {
 
 // Contact 表示一个 Outlook 联系人。
 type Contact struct {
-	ID             string                `json:"id"`
-	DisplayName    string                `json:"displayName"`
-	EmailAddresses []ContactEmailAddress `json:"emailAddresses"`
-	CompanyName    string                `json:"companyName"`
-	JobTitle       string                `json:"jobTitle"`
-	MobilePhone    string                `json:"mobilePhone"`
-	BusinessPhones []string              `json:"businessPhones"`
+	ID               string                `json:"id"`
+	DisplayName      string                `json:"displayName"`
+	EmailAddresses   []ContactEmailAddress `json:"emailAddresses"`
+	CompanyName      string                `json:"companyName"`
+	JobTitle         string                `json:"jobTitle"`
+	MobilePhone      string                `json:"mobilePhone"`
+	BusinessPhones   []string              `json:"businessPhones"`
+	NickName         string                `json:"nickName,omitempty"`
+	Birthday         string                `json:"birthday,omitempty"`
+	PersonalNotes    string                `json:"personalNotes,omitempty"`
+	Department       string                `json:"department,omitempty"`
+	OfficeLocation   string                `json:"officeLocation,omitempty"`
+	Profession       string                `json:"profession,omitempty"`
+	BusinessHomePage string                `json:"businessHomePage,omitempty"`
 }
 
 // ListContacts 读取当前账号默认联系人文件夹中的联系人列表。
@@ -45,7 +52,7 @@ func ListContactsInFolder(ctx context.Context, accessToken, folderID string, top
 	}
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones")
+	query.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage")
 	query.Set("$orderby", "displayName")
 	endpoint := graphBaseURL + "/me/contacts?" + query.Encode()
 	if strings.TrimSpace(folderID) != "" {
@@ -76,14 +83,21 @@ func ListContactsInFolder(ctx context.Context, accessToken, folderID string, top
 }
 
 type ContactInput struct {
-	DisplayName    string
-	GivenName      string
-	Surname        string
-	EmailAddresses []ContactEmailAddress
-	CompanyName    string
-	JobTitle       string
-	MobilePhone    string
-	BusinessPhones []string
+	DisplayName      string
+	GivenName        string
+	Surname          string
+	EmailAddresses   []ContactEmailAddress
+	CompanyName      string
+	JobTitle         string
+	MobilePhone      string
+	BusinessPhones   []string
+	NickName         string
+	Birthday         string
+	PersonalNotes    string
+	Department       string
+	OfficeLocation   string
+	Profession       string
+	BusinessHomePage string
 }
 
 // buildContactPayload 构造 Graph 联系人请求体。
@@ -111,6 +125,27 @@ func buildContactPayload(input ContactInput) map[string]any {
 	}
 	if len(input.BusinessPhones) > 0 {
 		payload["businessPhones"] = input.BusinessPhones
+	}
+	if strings.TrimSpace(input.NickName) != "" {
+		payload["nickName"] = input.NickName
+	}
+	if strings.TrimSpace(input.Birthday) != "" {
+		payload["birthday"] = input.Birthday
+	}
+	if strings.TrimSpace(input.PersonalNotes) != "" {
+		payload["personalNotes"] = input.PersonalNotes
+	}
+	if strings.TrimSpace(input.Department) != "" {
+		payload["department"] = input.Department
+	}
+	if strings.TrimSpace(input.OfficeLocation) != "" {
+		payload["officeLocation"] = input.OfficeLocation
+	}
+	if strings.TrimSpace(input.Profession) != "" {
+		payload["profession"] = input.Profession
+	}
+	if strings.TrimSpace(input.BusinessHomePage) != "" {
+		payload["businessHomePage"] = input.BusinessHomePage
 	}
 	return payload
 }
@@ -231,7 +266,7 @@ func SearchContacts(ctx context.Context, accessToken, query string, top int) ([]
 	values := url.Values{}
 	values.Set("$filter", filter)
 	values.Set("$top", strconv.Itoa(top))
-	values.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones")
+	values.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage")
 	values.Set("$orderby", "displayName")
 	endpoint := graphBaseURL + "/me/contacts?" + values.Encode()
 
@@ -420,12 +455,19 @@ func CopyContact(ctx context.Context, accessToken, contactID, destinationFolderI
 		return nil, err
 	}
 	input := ContactInput{
-		DisplayName:    contact.DisplayName,
-		CompanyName:    contact.CompanyName,
-		JobTitle:       contact.JobTitle,
-		MobilePhone:    contact.MobilePhone,
-		EmailAddresses: contact.EmailAddresses,
-		BusinessPhones: contact.BusinessPhones,
+		DisplayName:      contact.DisplayName,
+		CompanyName:      contact.CompanyName,
+		JobTitle:         contact.JobTitle,
+		MobilePhone:      contact.MobilePhone,
+		EmailAddresses:   contact.EmailAddresses,
+		BusinessPhones:   contact.BusinessPhones,
+		NickName:         contact.NickName,
+		Birthday:         contact.Birthday,
+		PersonalNotes:    contact.PersonalNotes,
+		Department:       contact.Department,
+		OfficeLocation:   contact.OfficeLocation,
+		Profession:       contact.Profession,
+		BusinessHomePage: contact.BusinessHomePage,
 	}
 	if strings.TrimSpace(newDisplayName) != "" {
 		input.DisplayName = strings.TrimSpace(newDisplayName)
