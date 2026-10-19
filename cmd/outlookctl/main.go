@@ -14,7 +14,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"mime"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -1831,6 +1833,10 @@ func runContacts(args []string) error {
 		return runContactsDelete(args[1:])
 	case "permanent-delete":
 		return runContactsPermanentDelete(args[1:])
+	case "photo-get":
+		return runContactsPhotoGet(args[1:])
+	case "photo-set":
+		return runContactsPhotoSet(args[1:])
 	case "move":
 		return runContactsMove(args[1:])
 	case "copy":
@@ -3166,6 +3172,99 @@ func runContactsPermanentDelete(args []string) error {
 	return nil
 }
 
+// runContactsPhotoGet 读取联系人照片并保存到文件。
+func runContactsPhotoGet(args []string) error {
+	fs := flag.NewFlagSet("contacts photo-get", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "联系人 ID")
+	outFlag := fs.String("out", "", "保存照片的本地路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*outFlag) == "" {
+		return errors.New("用法: outlookctl contacts photo-get --id <联系人ID> --out <文件路径>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	data, contentType, err := graph.GetContactPhoto(ctx, loginResult.AccessToken, *idFlag)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(*outFlag, data, 0o600); err != nil {
+		return fmt.Errorf("保存联系人照片失败: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人照片已保存: %s\n", *outFlag)
+	fmt.Fprintf(os.Stdout, "内容类型: %s\n", contentType)
+	fmt.Fprintf(os.Stdout, "大小: %d 字节\n", len(data))
+	return nil
+}
+
+// runContactsPhotoSet 上传联系人照片。
+func runContactsPhotoSet(args []string) error {
+	fs := flag.NewFlagSet("contacts photo-set", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "联系人 ID")
+	fileFlag := fs.String("file", "", "本地照片文件路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl contacts photo-set --id <联系人ID> --file <照片路径>")
+	}
+	data, err := os.ReadFile(*fileFlag)
+	if err != nil {
+		return fmt.Errorf("读取联系人照片失败: %w", err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(*fileFlag))
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.SetContactPhoto(ctx, loginResult.AccessToken, *idFlag, data, contentType); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人照片已更新: %s\n", *fileFlag)
+	fmt.Fprintf(os.Stdout, "内容类型: %s\n", contentType)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3203,6 +3302,8 @@ func printUsage() {
   outlookctl contacts update --id <联系人ID> --display-name <名称>  更新联系人
   outlookctl contacts delete --id <联系人ID>  删除联系人
   outlookctl contacts permanent-delete --id <联系人ID>  永久删除联系人
+  outlookctl contacts photo-get --id <联系人ID> --out <文件>  下载联系人照片
+  outlookctl contacts photo-set --id <联系人ID> --file <文件>  上传联系人照片
   outlookctl contacts move --id <联系人ID> --folder <文件夹>  移动联系人
   outlookctl contacts copy --id <联系人ID> --folder <文件夹>  复制联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件

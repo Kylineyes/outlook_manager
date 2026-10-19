@@ -8,9 +8,13 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -443,6 +447,19 @@ type contactsPermanentDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// contactsPhotoGetArgs 是 contacts_photo_get tool 的输入参数。
+type contactsPhotoGetArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsPhotoSetArgs 是 contacts_photo_set tool 的输入参数。
+type contactsPhotoSetArgs struct {
+	ID      string `json:"id" jsonschema:"联系人 ID"`
+	File    string `json:"file" jsonschema:"本地照片文件路径"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -728,6 +745,16 @@ func main() {
 		Name:        "contacts_permanent_delete",
 		Description: "永久删除联系人",
 	}, contactsPermanentDeleteHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_photo_get",
+		Description: "读取联系人照片",
+	}, contactsPhotoGetHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "contacts_photo_set",
+		Description: "设置联系人照片",
+	}, contactsPhotoSetHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2736,6 +2763,86 @@ func contactsPermanentDeleteHandler(ctx context.Context, req *mcp.CallToolReques
 		"success":   true,
 		"account":   selected.Username,
 		"contactId": args.ID,
+	})
+}
+
+// contactsPhotoGetHandler 读取联系人照片。
+func contactsPhotoGetHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsPhotoGetArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, contentType, err := graph.GetContactPhoto(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":     true,
+		"account":     selected.Username,
+		"contactId":   args.ID,
+		"contentType": contentType,
+		"size":        len(data),
+		"base64":      base64.StdEncoding.EncodeToString(data),
+	})
+}
+
+// contactsPhotoSetHandler 设置联系人照片。
+func contactsPhotoSetHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsPhotoSetArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("联系人 ID 和照片文件不能为空")
+	}
+	data, err := os.ReadFile(args.File)
+	if err != nil {
+		return nil, nil, fmt.Errorf("读取联系人照片失败: %w", err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(args.File))
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.SetContactPhoto(ctx, loginResult.AccessToken, args.ID, data, contentType); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":     true,
+		"account":     selected.Username,
+		"contactId":   args.ID,
+		"contentType": contentType,
+		"size":        len(data),
 	})
 }
 
