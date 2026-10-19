@@ -43,6 +43,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 联系人移动到文件夹
 - 联系人复制
 - 草稿创建、列表、发送
+- 草稿更新
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
 ## 环境要求
@@ -138,6 +139,7 @@ outlookctl mail draft-create --to someone@example.com --subject "主题" --body 
 outlookctl mail draft-create --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail drafts
 outlookctl mail draft-send <draft-id>
+outlookctl mail draft-update --id <草稿ID> --to someone@example.com --subject "新主题" --body "新正文"
 outlookctl mail folder-create --name "新文件夹"
 outlookctl mail folder-rename <folder-id> --name "新名称"
 outlookctl mail folder-delete <folder-id>
@@ -195,6 +197,7 @@ outlookctl mail importance <message-id> --level high
 - `mail_draft_create`
 - `mail_drafts_list`
 - `mail_draft_send`
+- `mail_draft_update`
 - `mail_folder_create`
 - `mail_folder_rename`
 - `mail_folder_delete`
