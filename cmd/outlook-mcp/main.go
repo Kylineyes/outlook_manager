@@ -462,6 +462,26 @@ type contactsPhotoSetArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// calendarAttachmentsArgs 是 calendar_attachments_list tool 的输入参数。
+type calendarAttachmentsArgs struct {
+	ID      string `json:"id" jsonschema:"事件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarAttachmentAddArgs 是 calendar_attachment_add tool 的输入参数。
+type calendarAttachmentAddArgs struct {
+	ID      string `json:"id" jsonschema:"事件 ID"`
+	File    string `json:"file" jsonschema:"本地附件文件路径"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarAttachmentGetArgs 是 calendar_attachment_get tool 的输入参数。
+type calendarAttachmentGetArgs struct {
+	ID           string `json:"id" jsonschema:"事件 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"附件 ID"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -757,6 +777,21 @@ func main() {
 		Name:        "contacts_photo_set",
 		Description: "设置联系人照片",
 	}, contactsPhotoSetHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_attachments_list",
+		Description: "列出日历事件附件",
+	}, calendarAttachmentsHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_attachment_add",
+		Description: "给日历事件添加附件",
+	}, calendarAttachmentAddHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_attachment_get",
+		Description: "下载日历事件附件",
+	}, calendarAttachmentGetHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2855,6 +2890,126 @@ func contactsPhotoSetHandler(ctx context.Context, req *mcp.CallToolRequest, args
 		"contactId":   args.ID,
 		"contentType": contentType,
 		"size":        len(data),
+	})
+}
+
+// calendarAttachmentsHandler 列出日历事件附件。
+func calendarAttachmentsHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentsArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachments, err := graph.ListCalendarEventAttachments(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":     true,
+		"account":     selected.Username,
+		"eventId":     args.ID,
+		"attachments": attachments,
+	})
+}
+
+// calendarAttachmentAddHandler 给日历事件添加附件。
+func calendarAttachmentAddHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentAddArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 和附件文件不能为空")
+	}
+	data, err := os.ReadFile(args.File)
+	if err != nil {
+		return nil, nil, fmt.Errorf("读取附件失败: %w", err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(args.File))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, graph.MailAttachmentInput{
+		Name:         filepath.Base(args.File),
+		ContentType:  contentType,
+		ContentBytes: data,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":    true,
+		"account":    selected.Username,
+		"eventId":    args.ID,
+		"attachment": attachment,
+	})
+}
+
+// calendarAttachmentGetHandler 下载日历事件附件。
+func calendarAttachmentGetHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentGetArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.AttachmentID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 和附件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, contentType, err := graph.GetCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"eventId":      args.ID,
+		"attachmentId": args.AttachmentID,
+		"contentType":  contentType,
+		"size":         len(data),
+		"base64":       base64.StdEncoding.EncodeToString(data),
 	})
 }
 

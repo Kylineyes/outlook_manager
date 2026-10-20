@@ -1732,6 +1732,12 @@ func runCalendar(args []string) error {
 		return runCalendarList(args[1:])
 	case "calendars":
 		return runCalendarCalendars(args[1:])
+	case "attachments":
+		return runCalendarAttachments(args[1:])
+	case "attachment-add":
+		return runCalendarAttachmentAdd(args[1:])
+	case "attachment-get":
+		return runCalendarAttachmentGet(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
@@ -3277,6 +3283,156 @@ func runContactsPhotoSet(args []string) error {
 	return nil
 }
 
+// runCalendarAttachments 列出日历事件附件。
+func runCalendarAttachments(args []string) error {
+	fs := flag.NewFlagSet("calendar attachments", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachments --id <事件ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachments, err := graph.ListCalendarEventAttachments(ctx, loginResult.AccessToken, *idFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(attachments, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化日历附件列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "附件数量: %d\n", len(attachments))
+	for _, attachment := range attachments {
+		fmt.Fprintf(os.Stdout, "- %s | %s | %d 字节 | id=%s\n", attachment.Name, attachment.ContentType, attachment.Size, attachment.ID)
+	}
+	return nil
+}
+
+// runCalendarAttachmentAdd 给日历事件添加附件。
+func runCalendarAttachmentAdd(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-add", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	fileFlag := fs.String("file", "", "本地附件文件路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-add --id <事件ID> --file <附件路径>")
+	}
+	data, err := os.ReadFile(*fileFlag)
+	if err != nil {
+		return fmt.Errorf("读取附件失败: %w", err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(*fileFlag))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, graph.MailAttachmentInput{
+		Name:         filepath.Base(*fileFlag),
+		ContentType:  contentType,
+		ContentBytes: data,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已添加: %s\n", attachment.Name)
+	fmt.Fprintf(os.Stdout, "附件 ID: %s\n", attachment.ID)
+	return nil
+}
+
+// runCalendarAttachmentGet 下载日历事件附件。
+func runCalendarAttachmentGet(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-get", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "附件 ID")
+	outFlag := fs.String("out", "", "保存附件的本地路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" || strings.TrimSpace(*outFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out <文件路径>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	data, contentType, err := graph.GetCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(*outFlag, data, 0o600); err != nil {
+		return fmt.Errorf("保存日历附件失败: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已保存: %s\n", *outFlag)
+	fmt.Fprintf(os.Stdout, "内容类型: %s\n", contentType)
+	fmt.Fprintf(os.Stdout, "大小: %d 字节\n", len(data))
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3300,6 +3456,9 @@ func printUsage() {
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
   outlookctl calendar list --days 7          查看未来日历事件
   outlookctl calendar calendars              列出日历
+  outlookctl calendar attachments --id <事件ID>  列出事件附件
+  outlookctl calendar attachment-add --id <事件ID> --file <文件>  添加事件附件
+  outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out <文件>  下载事件附件
   outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
