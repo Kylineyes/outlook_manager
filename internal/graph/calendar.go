@@ -569,3 +569,49 @@ func CancelCalendarEvent(ctx context.Context, accessToken, eventID, comment stri
 	}
 	return nil
 }
+
+// RespondCalendarEvent 响应日历邀请。
+// response 支持 accept、decline、tentative。
+func RespondCalendarEvent(ctx context.Context, accessToken, eventID, response, comment string) error {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return fmt.Errorf("事件 ID 不能为空")
+	}
+	action := ""
+	switch strings.ToLower(strings.TrimSpace(response)) {
+	case "accept", "accepted":
+		action = "accept"
+	case "decline", "declined":
+		action = "decline"
+	case "tentative", "tentativelyaccept", "tentatively-accept":
+		action = "tentativelyAccept"
+	default:
+		return fmt.Errorf("不支持的响应类型: %s", response)
+	}
+	payload := map[string]any{"sendResponse": true}
+	if strings.TrimSpace(comment) != "" {
+		payload["comment"] = strings.TrimSpace(comment)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化日历响应请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/" + action
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建日历响应请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 日历响应失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 日历响应返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
