@@ -312,6 +312,8 @@ func runMail(args []string) error {
 		return runMailRules(args[1:])
 	case "rule-create":
 		return runMailRuleCreate(args[1:])
+	case "rule-update":
+		return runMailRuleUpdate(args[1:])
 	case "rule-delete":
 		return runMailRuleDelete(args[1:])
 	case "master-categories":
@@ -2668,6 +2670,78 @@ func runMailRuleCreate(args []string) error {
 	return nil
 }
 
+// runMailRuleUpdate 更新收件箱规则。
+func runMailRuleUpdate(args []string) error {
+	fs := flag.NewFlagSet("mail rule-update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	idFlag := fs.String("id", "", "规则 ID")
+	nameFlag := fs.String("name", "", "规则名称")
+	fromFlag := fs.String("from", "", "发件人邮箱，多个用逗号分隔")
+	subjectFlag := fs.String("subject-contains", "", "主题包含关键字，多个用逗号分隔")
+	moveFlag := fs.String("move-to", "", "移动到文件夹名称或 ID")
+	markReadFlag := fs.Bool("mark-read", false, "标记为已读")
+	deleteFlag := fs.Bool("delete", false, "删除邮件")
+	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
+	disabledFlag := fs.Bool("disabled", false, "更新为禁用状态")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl mail rule-update --id <规则ID> --name <名称> ...")
+	}
+	from := splitAddresses(*fromFlag)
+	subjects := splitAddresses(*subjectFlag)
+	if len(from) == 0 && len(subjects) == 0 {
+		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
+	}
+	if strings.TrimSpace(*moveFlag) == "" && !*markReadFlag && !*deleteFlag && !*stopFlag {
+		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	moveToFolder := strings.TrimSpace(*moveFlag)
+	if moveToFolder != "" {
+		moveToFolder, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, moveToFolder)
+		if err != nil {
+			return err
+		}
+	}
+	rule, err := graph.UpdateMessageRule(ctx, loginResult.AccessToken, *idFlag, graph.MessageRuleInput{
+		DisplayName:         *nameFlag,
+		FromAddresses:       from,
+		SubjectContains:     subjects,
+		MoveToFolder:        moveToFolder,
+		MarkAsRead:          *markReadFlag,
+		Delete:              *deleteFlag,
+		StopProcessingRules: *stopFlag,
+		IsEnabled:           !*disabledFlag,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "规则已更新: %s\n", rule.DisplayName)
+	fmt.Fprintf(os.Stdout, "规则 ID: %s\n", rule.ID)
+	return nil
+}
+
 // runMailRuleDelete 删除收件箱规则。
 func runMailRuleDelete(args []string) error {
 	fs := flag.NewFlagSet("mail rule-delete", flag.ContinueOnError)
@@ -3495,6 +3569,7 @@ func printUsage() {
   outlookctl mail category-remove <id> --category <名称>  移除类别
   outlookctl mail rules                       列出收件箱规则
   outlookctl mail rule-create --name <名称>   创建收件箱规则
+  outlookctl mail rule-update --id <规则ID> --name <名称>  更新收件箱规则
   outlookctl mail rule-delete --id <规则ID>   删除收件箱规则
   outlookctl mail master-categories           列出主类别
   outlookctl mail master-category-create --name <名称>  创建主类别

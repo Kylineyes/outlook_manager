@@ -173,3 +173,41 @@ func DeleteMessageRule(ctx context.Context, accessToken, ruleID string) error {
 	}
 	return nil
 }
+
+// UpdateMessageRule 更新收件箱规则。
+func UpdateMessageRule(ctx context.Context, accessToken, ruleID string, input MessageRuleInput) (*MessageRule, error) {
+	ruleID = strings.TrimSpace(ruleID)
+	if ruleID == "" {
+		return nil, fmt.Errorf("规则 ID 不能为空")
+	}
+	payload, err := buildMessageRulePayload(input)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化更新收件箱规则请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/mailFolders/inbox/messageRules/" + url.PathEscape(ruleID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("创建更新收件箱规则请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 更新收件箱规则失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 更新收件箱规则返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var rule MessageRule
+	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
+		return nil, fmt.Errorf("解析更新收件箱规则响应失败: %w", err)
+	}
+	return &rule, nil
+}

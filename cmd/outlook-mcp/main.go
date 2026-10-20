@@ -370,6 +370,20 @@ type mailRuleCreateArgs struct {
 	Disabled        bool     `json:"disabled,omitempty" jsonschema:"创建为禁用状态"`
 }
 
+// mailRuleUpdateArgs 是 mail_rule_update tool 的输入参数。
+type mailRuleUpdateArgs struct {
+	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID              string   `json:"id" jsonschema:"规则 ID"`
+	Name            string   `json:"name" jsonschema:"规则名称"`
+	From            []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
+	SubjectContains []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
+	MoveTo          string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
+	MarkAsRead      bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
+	Delete          bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
+	Stop            bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
+	Disabled        bool     `json:"disabled,omitempty" jsonschema:"更新为禁用状态"`
+}
+
 // mailRuleDeleteArgs 是 mail_rule_delete tool 的输入参数。
 type mailRuleDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
@@ -792,6 +806,11 @@ func main() {
 		Name:        "calendar_attachment_get",
 		Description: "下载日历事件附件",
 	}, calendarAttachmentGetHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_rule_update",
+		Description: "更新收件箱规则",
+	}, mailRuleUpdateHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2398,6 +2417,62 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 		}
 	}
 	rule, err := graph.CreateMessageRule(ctx, loginResult.AccessToken, graph.MessageRuleInput{
+		DisplayName:         args.Name,
+		FromAddresses:       args.From,
+		SubjectContains:     args.SubjectContains,
+		MoveToFolder:        moveTo,
+		MarkAsRead:          args.MarkAsRead,
+		Delete:              args.Delete,
+		StopProcessingRules: args.Stop,
+		IsEnabled:           !args.Disabled,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"rule":    rule,
+	})
+}
+
+// mailRuleUpdateHandler 更新收件箱规则。
+func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRuleUpdateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("规则 ID 和名称不能为空")
+	}
+	if len(args.From) == 0 && len(args.SubjectContains) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个规则条件")
+	}
+	if strings.TrimSpace(args.MoveTo) == "" && !args.MarkAsRead && !args.Delete && !args.Stop {
+		return nil, nil, fmt.Errorf("至少需要一个规则动作")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	moveTo := strings.TrimSpace(args.MoveTo)
+	if moveTo != "" {
+		moveTo, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, moveTo)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	rule, err := graph.UpdateMessageRule(ctx, loginResult.AccessToken, args.ID, graph.MessageRuleInput{
 		DisplayName:         args.Name,
 		FromAddresses:       args.From,
 		SubjectContains:     args.SubjectContains,
