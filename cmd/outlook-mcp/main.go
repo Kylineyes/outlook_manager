@@ -67,7 +67,6 @@ type mailSendArgs struct {
 	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
-	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
 	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
 	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
@@ -143,7 +142,6 @@ type mailDraftCreateArgs struct {
 	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
-	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
 	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
 	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
