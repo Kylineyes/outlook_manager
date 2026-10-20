@@ -30,6 +30,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱规则管理
 - 收件箱规则更新
 - 主类别管理
+- 主类别颜色更新
 - 日历事件读取
 - 多日历列表与按日历查询事件
 - 日历事件创建、更新、删除
@@ -119,6 +120,7 @@ outlookctl mail rule-update --id <规则ID> --name "规则" --subject-contains "
 outlookctl mail master-categories
 outlookctl mail master-category-create --name "项目A" --color preset0
 outlookctl mail master-category-delete --id <类别ID>
+outlookctl mail master-category-update --id <类别ID> --color preset5
 outlookctl calendar list --days 7
 outlookctl calendar calendars
 outlookctl calendar list --calendar "日历" --days 7
@@ -193,6 +195,7 @@ outlookctl mail importance <message-id> --level high
 - `mail_master_categories_list`
 - `mail_master_category_create`
 - `mail_master_category_delete`
+- `mail_master_category_update`
 - `calendar_list`
 - `calendar_calendars_list`
 - `calendar_create`
