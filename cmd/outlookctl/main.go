@@ -314,6 +314,8 @@ func runMail(args []string) error {
 		return runMailRuleCreate(args[1:])
 	case "rule-update":
 		return runMailRuleUpdate(args[1:])
+	case "rule-apply":
+		return runMailRuleApply(args[1:])
 	case "rule-delete":
 		return runMailRuleDelete(args[1:])
 	case "master-categories":
@@ -2616,7 +2618,12 @@ func runMailRuleCreate(args []string) error {
 	markReadFlag := fs.Bool("mark-read", false, "标记为已读")
 	deleteFlag := fs.Bool("delete", false, "删除邮件")
 	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
+	categoryFlag := fs.String("category", "", "给邮件添加类别，多个用逗号分隔")
 	disabledFlag := fs.Bool("disabled", false, "创建为禁用状态")
+	applyNowFlag := fs.Bool("apply-now", false, "创建后立即回放规则")
+	confirmApplyFlag := fs.Bool("confirm-apply", false, "确认实际修改已有邮件；不填时只 dry-run")
+	applyFolderFlag := fs.String("apply-folder", "", "回放规则的目标文件夹；不填时使用收件箱")
+	applyMaxFlag := fs.Int("apply-max", 500, "回放时最多扫描多少封邮件")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -2625,10 +2632,11 @@ func runMailRuleCreate(args []string) error {
 	}
 	from := splitAddresses(*fromFlag)
 	subjects := splitAddresses(*subjectFlag)
+	categories := splitAddresses(*categoryFlag)
 	if len(from) == 0 && len(subjects) == 0 {
 		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
 	}
-	if strings.TrimSpace(*moveFlag) == "" && !*markReadFlag && !*deleteFlag && !*stopFlag {
+	if strings.TrimSpace(*moveFlag) == "" && len(categories) == 0 && !*markReadFlag && !*deleteFlag && !*stopFlag {
 		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
 	}
 
@@ -2664,6 +2672,7 @@ func runMailRuleCreate(args []string) error {
 		MoveToFolder:        moveToFolder,
 		MarkAsRead:          *markReadFlag,
 		Delete:              *deleteFlag,
+		AssignCategories:    categories,
 		StopProcessingRules: *stopFlag,
 		IsEnabled:           !*disabledFlag,
 	})
@@ -2673,6 +2682,24 @@ func runMailRuleCreate(args []string) error {
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
 	fmt.Fprintf(os.Stdout, "规则已创建: %s\n", rule.DisplayName)
 	fmt.Fprintf(os.Stdout, "规则 ID: %s\n", rule.ID)
+	if *applyNowFlag {
+		folderID := "inbox"
+		if strings.TrimSpace(*applyFolderFlag) != "" {
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *applyFolderFlag)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			folderID = resolved
+		}
+		applyResult, applyErr := graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, *applyMaxFlag, *confirmApplyFlag)
+		if applyErr != nil {
+			return applyErr
+		}
+		printMessageRuleApplyResult(selected.Username, applyResult)
+		if !*confirmApplyFlag {
+			fmt.Fprintln(os.Stdout, "这是 dry-run，未修改任何邮件；确认后加 --confirm-apply 执行")
+		}
+	}
 	return nil
 }
 
@@ -2689,6 +2716,7 @@ func runMailRuleUpdate(args []string) error {
 	markReadFlag := fs.Bool("mark-read", false, "标记为已读")
 	deleteFlag := fs.Bool("delete", false, "删除邮件")
 	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
+	categoryFlag := fs.String("category", "", "给邮件添加类别，多个用逗号分隔")
 	disabledFlag := fs.Bool("disabled", false, "更新为禁用状态")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -2698,10 +2726,11 @@ func runMailRuleUpdate(args []string) error {
 	}
 	from := splitAddresses(*fromFlag)
 	subjects := splitAddresses(*subjectFlag)
+	categories := splitAddresses(*categoryFlag)
 	if len(from) == 0 && len(subjects) == 0 {
 		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
 	}
-	if strings.TrimSpace(*moveFlag) == "" && !*markReadFlag && !*deleteFlag && !*stopFlag {
+	if strings.TrimSpace(*moveFlag) == "" && len(categories) == 0 && !*markReadFlag && !*deleteFlag && !*stopFlag {
 		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -2736,6 +2765,7 @@ func runMailRuleUpdate(args []string) error {
 		MoveToFolder:        moveToFolder,
 		MarkAsRead:          *markReadFlag,
 		Delete:              *deleteFlag,
+		AssignCategories:    categories,
 		StopProcessingRules: *stopFlag,
 		IsEnabled:           !*disabledFlag,
 	})
@@ -2745,6 +2775,90 @@ func runMailRuleUpdate(args []string) error {
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
 	fmt.Fprintf(os.Stdout, "规则已更新: %s\n", rule.DisplayName)
 	fmt.Fprintf(os.Stdout, "规则 ID: %s\n", rule.ID)
+	return nil
+}
+
+// printMessageRuleApplyResult 输出规则回放结果。
+func printMessageRuleApplyResult(username string, result *graph.RuleApplyResult) {
+	fmt.Fprintf(os.Stdout, "账号: %s\n", username)
+	fmt.Fprintf(os.Stdout, "规则: %s\n", result.RuleName)
+	fmt.Fprintf(os.Stdout, "文件夹: %s\n", result.FolderID)
+	fmt.Fprintf(os.Stdout, "扫描邮件: %d\n", result.Scanned)
+	fmt.Fprintf(os.Stdout, "匹配邮件: %d\n", result.Matched)
+	fmt.Fprintf(os.Stdout, "已应用: %d\n", result.Applied)
+	if result.DryRun {
+		fmt.Fprintln(os.Stdout, "模式: dry-run，未修改任何邮件")
+	} else {
+		fmt.Fprintln(os.Stdout, "模式: 已实际应用")
+	}
+	for i, match := range result.Matches {
+		fmt.Fprintf(os.Stdout, "%d. %s | %s | %s\n", i+1, match.Subject, match.From, strings.Join(match.Actions, ","))
+	}
+}
+
+// runMailRuleApply 把已有收件箱规则回放到已有邮件。
+func runMailRuleApply(args []string) error {
+	fs := flag.NewFlagSet("mail rule-apply", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	idFlag := fs.String("id", "", "规则 ID")
+	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID；不填时使用收件箱")
+	maxFlag := fs.Int("max", 500, "最多扫描多少封邮件，范围 1-1000")
+	confirmFlag := fs.Bool("confirm", false, "确认实际修改邮件；不填时只 dry-run")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl mail rule-apply --id <规则ID> [--folder <文件夹>] [--max 500] [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	rule, err := graph.GetMessageRule(ctx, loginResult.AccessToken, *idFlag)
+	if err != nil {
+		return err
+	}
+	folderID := "inbox"
+	if strings.TrimSpace(*folderFlag) != "" {
+		folderID, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if err != nil {
+			return err
+		}
+	}
+	result, err := graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, *maxFlag, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化规则回放结果失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	printMessageRuleApplyResult(selected.Username, result)
+	if *confirmFlag {
+		fmt.Fprintln(os.Stdout, "规则回放完成")
+	} else {
+		fmt.Fprintln(os.Stdout, "这是 dry-run，未修改任何邮件；确认后加 --confirm 执行")
+	}
 	return nil
 }
 
@@ -3697,7 +3811,9 @@ func printUsage() {
   outlookctl mail category-remove <id> --category <名称>  移除类别
   outlookctl mail rules                       列出收件箱规则
   outlookctl mail rule-create --name <名称>   创建收件箱规则
+  outlookctl mail rule-create --name <名称> --apply-now --confirm-apply  创建并立即回放规则
   outlookctl mail rule-update --id <规则ID> --name <名称>  更新收件箱规则
+  outlookctl mail rule-apply --id <规则ID> [--confirm]  回放规则到已有邮件
   outlookctl mail rule-delete --id <规则ID>   删除收件箱规则
   outlookctl mail master-categories           列出主类别
   outlookctl mail master-category-create --name <名称>  创建主类别

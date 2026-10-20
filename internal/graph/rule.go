@@ -27,6 +27,7 @@ type MessageRuleInput struct {
 	FromAddresses       []string
 	SubjectContains     []string
 	MoveToFolder        string
+	AssignCategories    []string
 	MarkAsRead          bool
 	Delete              bool
 	StopProcessingRules bool
@@ -65,6 +66,9 @@ func buildMessageRulePayload(input MessageRuleInput) (map[string]any, error) {
 	actions := map[string]any{}
 	if strings.TrimSpace(input.MoveToFolder) != "" {
 		actions["moveToFolder"] = strings.TrimSpace(input.MoveToFolder)
+	}
+	if len(input.AssignCategories) > 0 {
+		actions["assignCategories"] = input.AssignCategories
 	}
 	if input.MarkAsRead {
 		actions["markAsRead"] = true
@@ -208,6 +212,35 @@ func UpdateMessageRule(ctx context.Context, accessToken, ruleID string, input Me
 	var rule MessageRule
 	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
 		return nil, fmt.Errorf("解析更新收件箱规则响应失败: %w", err)
+	}
+	return &rule, nil
+}
+
+// GetMessageRule 读取单条收件箱规则。
+func GetMessageRule(ctx context.Context, accessToken, ruleID string) (*MessageRule, error) {
+	ruleID = strings.TrimSpace(ruleID)
+	if ruleID == "" {
+		return nil, fmt.Errorf("规则 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/mailFolders/inbox/messageRules/" + url.PathEscape(ruleID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建收件箱规则详情请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 收件箱规则详情失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 收件箱规则详情返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var rule MessageRule
+	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
+		return nil, fmt.Errorf("解析 Graph 收件箱规则详情失败: %w", err)
 	}
 	return &rule, nil
 }

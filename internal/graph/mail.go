@@ -22,6 +22,7 @@ type Message struct {
 	WebLink          string      `json:"webLink"`
 	BodyPreview      string      `json:"bodyPreview"`
 	HasAttachments   bool        `json:"hasAttachments"`
+	Importance       string      `json:"importance,omitempty"`
 	From             MessageFrom `json:"from"`
 }
 
@@ -61,7 +62,7 @@ func ListMessagesInFolder(ctx context.Context, accessToken, folderID string, top
 
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
+	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,importance")
 	query.Set("$orderby", "receivedDateTime desc")
 	endpoint := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID) + "/messages?" + query.Encode()
 
@@ -114,7 +115,7 @@ func SearchMessagesInFolder(ctx context.Context, accessToken, folderID, query st
 	escaped := strings.ReplaceAll(query, `"`, `\"`)
 	values.Set("$search", `"`+escaped+`"`)
 	values.Set("$top", strconv.Itoa(top))
-	values.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
+	values.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,importance")
 
 	endpoint := graphBaseURL + "/me/messages?" + values.Encode()
 	if strings.TrimSpace(folderID) != "" {
@@ -164,7 +165,7 @@ func ListMessagesInFolderAll(ctx context.Context, accessToken, folderID string, 
 	}
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(pageSize))
-	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
+	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,importance")
 	query.Set("$orderby", "receivedDateTime desc")
 	nextURL := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID) + "/messages?" + query.Encode()
 	messages := make([]Message, 0, pageSize)

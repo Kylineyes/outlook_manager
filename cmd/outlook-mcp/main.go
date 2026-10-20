@@ -357,35 +357,50 @@ type mailRulesArgs struct {
 
 // mailRuleCreateArgs 是 mail_rule_create tool 的输入参数。
 type mailRuleCreateArgs struct {
-	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Name            string   `json:"name" jsonschema:"规则名称"`
-	From            []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
-	SubjectContains []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
-	MoveTo          string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
-	MarkAsRead      bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
-	Delete          bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
-	Stop            bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
-	Disabled        bool     `json:"disabled,omitempty" jsonschema:"创建为禁用状态"`
+	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Name             string   `json:"name" jsonschema:"规则名称"`
+	From             []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
+	SubjectContains  []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
+	MoveTo           string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
+	MarkAsRead       bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
+	Delete           bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
+	Stop             bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
+	Disabled         bool     `json:"disabled,omitempty" jsonschema:"创建为禁用状态"`
+	ApplyNow         bool     `json:"applyNow,omitempty" jsonschema:"创建后立即回放规则"`
+	ConfirmApply     bool     `json:"confirmApply,omitempty" jsonschema:"确认实际修改已有邮件；不填时只 dry-run"`
+	ApplyFolder      string   `json:"applyFolder,omitempty" jsonschema:"回放规则的目标文件夹；不填时使用收件箱"`
+	ApplyMax         int      `json:"applyMax,omitempty" jsonschema:"回放时最多扫描多少封邮件，默认 500"`
+	AssignCategories []string `json:"assignCategories,omitempty" jsonschema:"给邮件添加的类别列表"`
 }
 
 // mailRuleUpdateArgs 是 mail_rule_update tool 的输入参数。
 type mailRuleUpdateArgs struct {
-	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	ID              string   `json:"id" jsonschema:"规则 ID"`
-	Name            string   `json:"name" jsonschema:"规则名称"`
-	From            []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
-	SubjectContains []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
-	MoveTo          string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
-	MarkAsRead      bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
-	Delete          bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
-	Stop            bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
-	Disabled        bool     `json:"disabled,omitempty" jsonschema:"更新为禁用状态"`
+	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID               string   `json:"id" jsonschema:"规则 ID"`
+	Name             string   `json:"name" jsonschema:"规则名称"`
+	From             []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
+	SubjectContains  []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
+	MoveTo           string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
+	MarkAsRead       bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
+	Delete           bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
+	Stop             bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
+	Disabled         bool     `json:"disabled,omitempty" jsonschema:"更新为禁用状态"`
+	AssignCategories []string `json:"assignCategories,omitempty" jsonschema:"给邮件添加的类别列表"`
 }
 
 // mailRuleDeleteArgs 是 mail_rule_delete tool 的输入参数。
 type mailRuleDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	ID      string `json:"id" jsonschema:"规则 ID"`
+}
+
+// mailRuleApplyArgs 是 mail_rule_apply tool 的输入参数。
+type mailRuleApplyArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID      string `json:"id" jsonschema:"规则 ID"`
+	Folder  string `json:"folder,omitempty" jsonschema:"目标文件夹名称或 ID；不填时使用收件箱"`
+	Max     int    `json:"max,omitempty" jsonschema:"最多扫描多少封邮件，默认 500，最大 1000"`
+	Confirm bool   `json:"confirm,omitempty" jsonschema:"确认实际修改邮件；不填时只 dry-run"`
 }
 
 // mailMasterCategoriesArgs 是 mail_master_categories_list tool 的输入参数。
@@ -846,6 +861,11 @@ func main() {
 		Name:        "calendar_respond",
 		Description: "响应日历邀请",
 	}, calendarRespondHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_rule_apply",
+		Description: "把收件箱规则回放到已有邮件，默认 dry-run",
+	}, mailRuleApplyHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2423,7 +2443,7 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 	if len(args.From) == 0 && len(args.SubjectContains) == 0 {
 		return nil, nil, fmt.Errorf("至少需要一个规则条件")
 	}
-	if strings.TrimSpace(args.MoveTo) == "" && !args.MarkAsRead && !args.Delete && !args.Stop {
+	if strings.TrimSpace(args.MoveTo) == "" && len(args.AssignCategories) == 0 && !args.MarkAsRead && !args.Delete && !args.Stop {
 		return nil, nil, fmt.Errorf("至少需要一个规则动作")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -2456,6 +2476,7 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 		FromAddresses:       args.From,
 		SubjectContains:     args.SubjectContains,
 		MoveToFolder:        moveTo,
+		AssignCategories:    args.AssignCategories,
 		MarkAsRead:          args.MarkAsRead,
 		Delete:              args.Delete,
 		StopProcessingRules: args.Stop,
@@ -2464,11 +2485,30 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(map[string]any{
+	var applyResult *graph.RuleApplyResult
+	if args.ApplyNow {
+		folderID := "inbox"
+		if strings.TrimSpace(args.ApplyFolder) != "" {
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.ApplyFolder)
+			if resolveErr != nil {
+				return nil, nil, resolveErr
+			}
+			folderID = resolved
+		}
+		applyResult, err = graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, args.ApplyMax, args.ConfirmApply)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	result := map[string]any{
 		"success": true,
 		"account": selected.Username,
 		"rule":    rule,
-	})
+	}
+	if applyResult != nil {
+		result["applyResult"] = applyResult
+	}
+	return jsonResult(result)
 }
 
 // mailRuleUpdateHandler 更新收件箱规则。
@@ -2479,7 +2519,7 @@ func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 	if len(args.From) == 0 && len(args.SubjectContains) == 0 {
 		return nil, nil, fmt.Errorf("至少需要一个规则条件")
 	}
-	if strings.TrimSpace(args.MoveTo) == "" && !args.MarkAsRead && !args.Delete && !args.Stop {
+	if strings.TrimSpace(args.MoveTo) == "" && len(args.AssignCategories) == 0 && !args.MarkAsRead && !args.Delete && !args.Stop {
 		return nil, nil, fmt.Errorf("至少需要一个规则动作")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -2512,6 +2552,7 @@ func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 		FromAddresses:       args.From,
 		SubjectContains:     args.SubjectContains,
 		MoveToFolder:        moveTo,
+		AssignCategories:    args.AssignCategories,
 		MarkAsRead:          args.MarkAsRead,
 		Delete:              args.Delete,
 		StopProcessingRules: args.Stop,
@@ -2524,6 +2565,51 @@ func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 		"success": true,
 		"account": selected.Username,
 		"rule":    rule,
+	})
+}
+
+// mailRuleApplyHandler 把一条收件箱规则回放到已有邮件。
+func mailRuleApplyHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRuleApplyArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("规则 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	rule, err := graph.GetMessageRule(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderID := "inbox"
+	if strings.TrimSpace(args.Folder) != "" {
+		folderID, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	result, err := graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, args.Max, args.Confirm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":     true,
+		"account":     selected.Username,
+		"applyResult": result,
 	})
 }
 
