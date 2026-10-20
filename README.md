@@ -11,6 +11,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱邮件列表
 - 单封邮件详情
 - 邮件搜索
+- 邮件分页全量拉取
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -92,6 +93,7 @@ outlookctl account use zero-67@hotmail.com
 
 ```powershell
 outlookctl mail list --top 10
+outlookctl mail list --all --max 500
 outlookctl mail read <message-id>
 outlookctl mail search --query "关键字"
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文"
