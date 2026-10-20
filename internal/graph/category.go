@@ -197,3 +197,42 @@ func DeleteMasterCategory(ctx context.Context, accessToken, categoryID string) e
 	}
 	return nil
 }
+
+// UpdateMasterCategory 更新主类别颜色。
+// Graph 不支持修改主类别名称，因此这里只更新 color。
+func UpdateMasterCategory(ctx context.Context, accessToken, categoryID, color string) (*Category, error) {
+	categoryID = strings.TrimSpace(categoryID)
+	color = strings.TrimSpace(color)
+	if categoryID == "" {
+		return nil, fmt.Errorf("类别 ID 不能为空")
+	}
+	if color == "" {
+		return nil, fmt.Errorf("类别颜色不能为空")
+	}
+	data, err := json.Marshal(map[string]string{"color": color})
+	if err != nil {
+		return nil, fmt.Errorf("序列化更新主类别请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/outlook/masterCategories/" + url.PathEscape(categoryID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("创建更新主类别请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 更新主类别失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 更新主类别返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var category Category
+	if err := json.NewDecoder(resp.Body).Decode(&category); err != nil {
+		return nil, fmt.Errorf("解析更新主类别响应失败: %w", err)
+	}
+	return &category, nil
+}

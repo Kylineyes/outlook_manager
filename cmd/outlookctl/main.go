@@ -320,6 +320,8 @@ func runMail(args []string) error {
 		return runMailMasterCategories(args[1:])
 	case "master-category-create":
 		return runMailMasterCategoryCreate(args[1:])
+	case "master-category-update":
+		return runMailMasterCategoryUpdate(args[1:])
 	case "master-category-delete":
 		return runMailMasterCategoryDelete(args[1:])
 	default:
@@ -2868,6 +2870,47 @@ func runMailMasterCategoryCreate(args []string) error {
 	return nil
 }
 
+// runMailMasterCategoryUpdate 更新主类别。
+func runMailMasterCategoryUpdate(args []string) error {
+	fs := flag.NewFlagSet("mail master-category-update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	idFlag := fs.String("id", "", "类别 ID")
+	colorFlag := fs.String("color", "", "类别颜色，例如 preset0")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*colorFlag) == "" {
+		return errors.New("用法: outlookctl mail master-category-update --id <类别ID> --color <颜色>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	category, err := graph.UpdateMasterCategory(ctx, loginResult.AccessToken, *idFlag, *colorFlag)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "主类别已更新: %s\n", category.DisplayName)
+	fmt.Fprintf(os.Stdout, "类别 ID: %s\n", category.ID)
+	return nil
+}
+
 // runMailMasterCategoryDelete 删除主类别。
 func runMailMasterCategoryDelete(args []string) error {
 	fs := flag.NewFlagSet("mail master-category-delete", flag.ContinueOnError)
@@ -3573,6 +3616,7 @@ func printUsage() {
   outlookctl mail rule-delete --id <规则ID>   删除收件箱规则
   outlookctl mail master-categories           列出主类别
   outlookctl mail master-category-create --name <名称>  创建主类别
+  outlookctl mail master-category-update --id <类别ID> --color preset5  更新主类别颜色
   outlookctl mail master-category-delete --id <类别ID>  删除主类别
   outlookctl version                       查看版本`)
 }

@@ -402,6 +402,13 @@ type mailMasterCategoryCreateArgs struct {
 	Color   string `json:"color,omitempty" jsonschema:"类别颜色，例如 preset0"`
 }
 
+// mailMasterCategoryUpdateArgs 是 mail_master_category_update tool 的输入参数。
+type mailMasterCategoryUpdateArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID      string `json:"id" jsonschema:"类别 ID"`
+	Color   string `json:"color" jsonschema:"类别颜色，例如 preset5"`
+}
+
 // mailMasterCategoryDeleteArgs 是 mail_master_category_delete tool 的输入参数。
 type mailMasterCategoryDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
@@ -811,6 +818,11 @@ func main() {
 		Name:        "mail_rule_update",
 		Description: "更新收件箱规则",
 	}, mailRuleUpdateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_master_category_update",
+		Description: "更新主类别颜色",
+	}, mailMasterCategoryUpdateHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2579,6 +2591,40 @@ func mailMasterCategoryCreateHandler(ctx context.Context, req *mcp.CallToolReque
 		return nil, nil, err
 	}
 	category, err := graph.CreateMasterCategory(ctx, loginResult.AccessToken, args.Name, args.Color)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"category": category,
+	})
+}
+
+// mailMasterCategoryUpdateHandler 更新主类别。
+func mailMasterCategoryUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMasterCategoryUpdateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Color) == "" {
+		return nil, nil, fmt.Errorf("类别 ID 和颜色不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	category, err := graph.UpdateMasterCategory(ctx, loginResult.AccessToken, args.ID, args.Color)
 	if err != nil {
 		return nil, nil, err
 	}
