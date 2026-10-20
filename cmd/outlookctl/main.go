@@ -1748,6 +1748,8 @@ func runCalendar(args []string) error {
 		return runCalendarUpdate(args[1:])
 	case "delete":
 		return runCalendarDelete(args[1:])
+	case "cancel":
+		return runCalendarCancel(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 calendar 子命令: %s", args[0])
@@ -3550,6 +3552,45 @@ func runCalendarAttachmentGet(args []string) error {
 	return nil
 }
 
+// runCalendarCancel 取消日历事件。
+func runCalendarCancel(args []string) error {
+	fs := flag.NewFlagSet("calendar cancel", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	commentFlag := fs.String("comment", "", "取消说明")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl calendar cancel --id <事件ID> [--comment <说明>]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.CancelCalendarEvent(ctx, loginResult.AccessToken, *idFlag, *commentFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历事件已取消: %s\n", *idFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3580,6 +3621,7 @@ func printUsage() {
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
   outlookctl calendar delete --id <事件ID>  删除事件
+  outlookctl calendar cancel --id <事件ID>  取消事件
   outlookctl contacts list --top 50          查看联系人
   outlookctl contacts search --query <关键字>  搜索联系人
   outlookctl contacts folders               列出联系人文件夹

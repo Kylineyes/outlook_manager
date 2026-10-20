@@ -535,3 +535,37 @@ func GetCalendarEventAttachment(ctx context.Context, accessToken, eventID, attac
 	}
 	return data, resp.Header.Get("Content-Type"), nil
 }
+
+// CancelCalendarEvent 取消日历事件并通知参与者。
+func CancelCalendarEvent(ctx context.Context, accessToken, eventID, comment string) error {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return fmt.Errorf("事件 ID 不能为空")
+	}
+	payload := map[string]any{}
+	if strings.TrimSpace(comment) != "" {
+		payload["comment"] = strings.TrimSpace(comment)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化取消日历事件请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/cancel"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建取消日历事件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 取消日历事件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 取消日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
