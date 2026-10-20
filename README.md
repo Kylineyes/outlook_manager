@@ -39,6 +39,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 日历事件分类、状态、重要性、敏感度
 - 日历事件附件读取、添加、下载
 - 日历事件取消
+- 日历邀请响应（接受、拒绝、暂定）
 - 联系人读取
 - 联系人创建、更新、删除
 - 联系人搜索
@@ -136,6 +137,7 @@ outlookctl calendar create --subject "每日站会" --start "2026-10-20T09:00:00
 outlookctl calendar update --id <事件ID> --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar delete --id <事件ID>
 outlookctl calendar cancel --id <事件ID> --comment "取消说明"
+outlookctl calendar respond --id <事件ID> --response accept
 outlookctl contacts list --top 20
 outlookctl contacts list --folder "客户" --top 20
 outlookctl contacts search --query "张"
@@ -205,6 +207,7 @@ outlookctl mail importance <message-id> --level high
 - `calendar_update`
 - `calendar_delete`
 - `calendar_cancel`
+- `calendar_respond`
 - `calendar_attachments_list`
 - `calendar_attachment_add`
 - `calendar_attachment_get`
