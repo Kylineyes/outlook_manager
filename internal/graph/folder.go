@@ -49,7 +49,7 @@ func ListMailFolders(ctx context.Context, accessToken string, top int) ([]MailFo
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 邮件文件夹列表失败: %w", err)
 	}
@@ -114,7 +114,7 @@ func CreateMailFolder(ctx context.Context, accessToken, displayName, parentID st
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 创建文件夹失败: %w", err)
 	}
@@ -155,7 +155,7 @@ func RenameMailFolder(ctx context.Context, accessToken, folderID, displayName st
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 重命名文件夹失败: %w", err)
 	}
@@ -183,7 +183,7 @@ func DeleteMailFolder(ctx context.Context, accessToken, folderID string) error {
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除文件夹失败: %w", err)
 	}

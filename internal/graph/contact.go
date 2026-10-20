@@ -76,7 +76,7 @@ func ListContactsInFolder(ctx context.Context, accessToken, folderID string, top
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 联系人列表失败: %w", err)
 	}
@@ -197,7 +197,7 @@ func CreateContactInFolder(ctx context.Context, accessToken, folderID string, in
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 创建联系人失败: %w", err)
 	}
@@ -231,7 +231,7 @@ func UpdateContact(ctx context.Context, accessToken, contactID string, input Con
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 更新联系人失败: %w", err)
 	}
@@ -260,7 +260,7 @@ func DeleteContact(ctx context.Context, accessToken, contactID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除联系人失败: %w", err)
 	}
@@ -300,7 +300,7 @@ func SearchContacts(ctx context.Context, accessToken, query string, top int) ([]
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 联系人搜索失败: %w", err)
 	}
@@ -344,7 +344,7 @@ func ListContactFolders(ctx context.Context, accessToken string, top int) ([]Con
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 联系人文件夹列表失败: %w", err)
 	}
@@ -383,7 +383,7 @@ func CreateContactFolder(ctx context.Context, accessToken, displayName, parentID
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 创建联系人文件夹失败: %w", err)
 	}
@@ -412,7 +412,7 @@ func DeleteContactFolder(ctx context.Context, accessToken, folderID string) erro
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除联系人文件夹失败: %w", err)
 	}
@@ -455,7 +455,7 @@ func GetContact(ctx context.Context, accessToken, contactID string) (*Contact, e
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 联系人详情失败: %w", err)
 	}
@@ -537,7 +537,7 @@ func RenameContactFolder(ctx context.Context, accessToken, folderID, displayName
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 重命名联系人文件夹失败: %w", err)
 	}
@@ -562,7 +562,7 @@ func PermanentDeleteContact(ctx context.Context, accessToken, contactID string) 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 永久删除联系人失败: %w", err)
 	}
@@ -586,7 +586,7 @@ func GetContactPhoto(ctx context.Context, accessToken, contactID string) ([]byte
 		return nil, "", fmt.Errorf("创建联系人照片请求失败: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("调用 Graph 联系人照片失败: %w", err)
 	}
@@ -622,7 +622,7 @@ func SetContactPhoto(ctx context.Context, accessToken, contactID string, data []
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 更新联系人照片失败: %w", err)
 	}

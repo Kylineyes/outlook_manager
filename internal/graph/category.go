@@ -28,7 +28,7 @@ func ListMasterCategories(ctx context.Context, accessToken string) ([]Category, 
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 类别列表失败: %w", err)
 	}
@@ -65,7 +65,7 @@ func GetMessageCategories(ctx context.Context, accessToken, messageID string) ([
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 邮件类别失败: %w", err)
 	}
@@ -157,7 +157,7 @@ func CreateMasterCategory(ctx context.Context, accessToken, displayName, color s
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 创建主类别失败: %w", err)
 	}
@@ -186,7 +186,7 @@ func DeleteMasterCategory(ctx context.Context, accessToken, categoryID string) e
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除主类别失败: %w", err)
 	}
@@ -221,7 +221,7 @@ func UpdateMasterCategory(ctx context.Context, accessToken, categoryID, color st
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 更新主类别失败: %w", err)
 	}

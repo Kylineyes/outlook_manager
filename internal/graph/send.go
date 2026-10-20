@@ -146,7 +146,7 @@ func SendMail(ctx context.Context, accessToken string, input SendMailInput) erro
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 发送邮件失败: %w", err)
 	}

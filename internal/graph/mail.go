@@ -72,7 +72,7 @@ func ListMessagesInFolder(ctx context.Context, accessToken, folderID string, top
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 邮件列表失败: %w", err)
 	}
@@ -128,7 +128,7 @@ func SearchMessagesInFolder(ctx context.Context, accessToken, folderID, query st
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 邮件搜索失败: %w", err)
 	}
@@ -175,7 +175,7 @@ func ListMessagesInFolderAll(ctx context.Context, accessToken, folderID string, 
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Accept", "application/json")
-		resp, err := httpClient.Do(req)
+		resp, err := doGraphRequest(req)
 		if err != nil {
 			return nil, fmt.Errorf("调用 Graph 邮件分页失败: %w", err)
 		}

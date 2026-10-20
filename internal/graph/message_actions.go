@@ -36,7 +36,7 @@ func MoveMessage(ctx context.Context, accessToken, messageID, destinationID stri
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return "", fmt.Errorf("调用 Graph 移动邮件失败: %w", err)
 	}
@@ -70,7 +70,7 @@ func DeleteMessage(ctx context.Context, accessToken, messageID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除邮件失败: %w", err)
 	}
@@ -101,7 +101,7 @@ func patchMessageProperties(ctx context.Context, accessToken, messageID string, 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 更新邮件属性失败: %w", err)
 	}
@@ -153,7 +153,7 @@ func PermanentDeleteMessage(ctx context.Context, accessToken, messageID string) 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 永久删除邮件失败: %w", err)
 	}

@@ -62,7 +62,7 @@ func GetMessage(ctx context.Context, accessToken, messageID string) (*MessageDet
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 邮件详情失败: %w", err)
 	}
@@ -99,7 +99,7 @@ func SetMessageRead(ctx context.Context, accessToken, messageID string, isRead b
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 更新邮件状态失败: %w", err)
 	}

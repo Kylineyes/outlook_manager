@@ -97,7 +97,7 @@ func ListMessageRules(ctx context.Context, accessToken string) ([]MessageRule, e
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 收件箱规则列表失败: %w", err)
 	}
@@ -133,7 +133,7 @@ func CreateMessageRule(ctx context.Context, accessToken string, input MessageRul
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 创建收件箱规则失败: %w", err)
 	}
@@ -162,7 +162,7 @@ func DeleteMessageRule(ctx context.Context, accessToken, ruleID string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除收件箱规则失败: %w", err)
 	}
@@ -196,7 +196,7 @@ func UpdateMessageRule(ctx context.Context, accessToken, ruleID string, input Me
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 更新收件箱规则失败: %w", err)
 	}

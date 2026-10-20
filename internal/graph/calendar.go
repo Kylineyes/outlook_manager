@@ -78,7 +78,7 @@ func ListCalendarEventsInCalendar(ctx context.Context, accessToken, calendarID s
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Prefer", `outlook.timezone="UTC"`)
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 日历事件失败: %w", err)
 	}
@@ -283,7 +283,7 @@ func CreateCalendarEvent(ctx context.Context, accessToken string, input Calendar
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 创建日历事件失败: %w", err)
 	}
@@ -322,7 +322,7 @@ func UpdateCalendarEvent(ctx context.Context, accessToken, eventID string, input
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 更新日历事件失败: %w", err)
 	}
@@ -351,7 +351,7 @@ func DeleteCalendarEvent(ctx context.Context, accessToken, eventID string) error
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除日历事件失败: %w", err)
 	}
@@ -384,7 +384,7 @@ func ListCalendars(ctx context.Context, accessToken string) ([]Calendar, error) 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 日历列表失败: %w", err)
 	}
@@ -442,7 +442,7 @@ func ListCalendarEventAttachments(ctx context.Context, accessToken, eventID stri
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 日历附件列表失败: %w", err)
 	}
@@ -491,7 +491,7 @@ func AddCalendarEventAttachment(ctx context.Context, accessToken, eventID string
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 添加日历附件失败: %w", err)
 	}
@@ -520,7 +520,7 @@ func GetCalendarEventAttachment(ctx context.Context, accessToken, eventID, attac
 		return nil, "", fmt.Errorf("创建日历附件下载请求失败: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("调用 Graph 日历附件下载失败: %w", err)
 	}
@@ -558,7 +558,7 @@ func CancelCalendarEvent(ctx context.Context, accessToken, eventID, comment stri
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 取消日历事件失败: %w", err)
 	}

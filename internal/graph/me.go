@@ -38,7 +38,7 @@ func GetMe(ctx context.Context, accessToken string) (*Me, error) {
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph /me 失败: %w", err)
 	}
