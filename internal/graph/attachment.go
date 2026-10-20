@@ -44,7 +44,7 @@ func ListAttachments(ctx context.Context, accessToken, messageID string) ([]Atta
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 附件列表失败: %w", err)
 	}
@@ -80,7 +80,7 @@ func DownloadAttachment(ctx context.Context, accessToken, messageID, attachmentI
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 附件下载失败: %w", err)
 	}

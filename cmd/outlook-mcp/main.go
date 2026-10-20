@@ -37,6 +37,8 @@ type mailListArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Folder  string `json:"folder,omitempty" jsonschema:"文件夹名称或 ID；不填时使用收件箱"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
+	All     bool   `json:"all,omitempty" jsonschema:"是否分页拉取多页邮件"`
+	Max     int    `json:"max,omitempty" jsonschema:"全量拉取时的最大邮件数量，默认 500，最大 1000"`
 }
 
 // mailReadArgs 是 mail_read tool 的输入参数。
@@ -65,7 +67,6 @@ type mailSendArgs struct {
 	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
-	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
 	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
 	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
@@ -141,7 +142,6 @@ type mailDraftCreateArgs struct {
 	Account                string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Attachments            []string `json:"attachments,omitempty" jsonschema:"本地附件文件路径列表"`
 	Importance             string   `json:"importance,omitempty" jsonschema:"重要性: low/normal/high"`
-	Sensitivity            string   `json:"sensitivity,omitempty" jsonschema:"敏感度: normal/personal/private/confidential"`
 	RequestReadReceipt     bool     `json:"requestReadReceipt,omitempty" jsonschema:"请求已读回执"`
 	RequestDeliveryReceipt bool     `json:"requestDeliveryReceipt,omitempty" jsonschema:"请求送达回执"`
 }
@@ -368,6 +368,20 @@ type mailRuleCreateArgs struct {
 	Disabled        bool     `json:"disabled,omitempty" jsonschema:"创建为禁用状态"`
 }
 
+// mailRuleUpdateArgs 是 mail_rule_update tool 的输入参数。
+type mailRuleUpdateArgs struct {
+	Account         string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID              string   `json:"id" jsonschema:"规则 ID"`
+	Name            string   `json:"name" jsonschema:"规则名称"`
+	From            []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
+	SubjectContains []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
+	MoveTo          string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
+	MarkAsRead      bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
+	Delete          bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
+	Stop            bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
+	Disabled        bool     `json:"disabled,omitempty" jsonschema:"更新为禁用状态"`
+}
+
 // mailRuleDeleteArgs 是 mail_rule_delete tool 的输入参数。
 type mailRuleDeleteArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
@@ -384,6 +398,13 @@ type mailMasterCategoryCreateArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Name    string `json:"name" jsonschema:"类别名称"`
 	Color   string `json:"color,omitempty" jsonschema:"类别颜色，例如 preset0"`
+}
+
+// mailMasterCategoryUpdateArgs 是 mail_master_category_update tool 的输入参数。
+type mailMasterCategoryUpdateArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID      string `json:"id" jsonschema:"类别 ID"`
+	Color   string `json:"color" jsonschema:"类别颜色，例如 preset5"`
 }
 
 // mailMasterCategoryDeleteArgs 是 mail_master_category_delete tool 的输入参数。
@@ -458,6 +479,41 @@ type contactsPhotoSetArgs struct {
 	ID      string `json:"id" jsonschema:"联系人 ID"`
 	File    string `json:"file" jsonschema:"本地照片文件路径"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarAttachmentsArgs 是 calendar_attachments_list tool 的输入参数。
+type calendarAttachmentsArgs struct {
+	ID      string `json:"id" jsonschema:"事件 ID"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarAttachmentAddArgs 是 calendar_attachment_add tool 的输入参数。
+type calendarAttachmentAddArgs struct {
+	ID      string `json:"id" jsonschema:"事件 ID"`
+	File    string `json:"file" jsonschema:"本地附件文件路径"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarAttachmentGetArgs 是 calendar_attachment_get tool 的输入参数。
+type calendarAttachmentGetArgs struct {
+	ID           string `json:"id" jsonschema:"事件 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"附件 ID"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarCancelArgs 是 calendar_cancel tool 的输入参数。
+type calendarCancelArgs struct {
+	ID      string `json:"id" jsonschema:"事件 ID"`
+	Comment string `json:"comment,omitempty" jsonschema:"取消说明"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarRespondArgs 是 calendar_respond tool 的输入参数。
+type calendarRespondArgs struct {
+	ID       string `json:"id" jsonschema:"事件 ID"`
+	Response string `json:"response" jsonschema:"响应类型: accept/decline/tentative"`
+	Comment  string `json:"comment,omitempty" jsonschema:"响应说明"`
+	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -756,6 +812,41 @@ func main() {
 		Description: "设置联系人照片",
 	}, contactsPhotoSetHandler)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_attachments_list",
+		Description: "列出日历事件附件",
+	}, calendarAttachmentsHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_attachment_add",
+		Description: "给日历事件添加附件",
+	}, calendarAttachmentAddHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_attachment_get",
+		Description: "下载日历事件附件",
+	}, calendarAttachmentGetHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_rule_update",
+		Description: "更新收件箱规则",
+	}, mailRuleUpdateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mail_master_category_update",
+		Description: "更新主类别颜色",
+	}, mailMasterCategoryUpdateHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_cancel",
+		Description: "取消日历事件",
+	}, calendarCancelHandler)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "calendar_respond",
+		Description: "响应日历邀请",
+	}, calendarRespondHandler)
+
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
 	}
@@ -831,7 +922,17 @@ func mailListHandler(ctx context.Context, req *mcp.CallToolRequest, args mailLis
 		return nil, nil, err
 	}
 	var messages []graph.Message
-	if strings.TrimSpace(args.Folder) == "" {
+	if args.All {
+		folderID := "inbox"
+		if strings.TrimSpace(args.Folder) != "" {
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+			if resolveErr != nil {
+				return nil, nil, resolveErr
+			}
+			folderID = resolved
+		}
+		messages, err = graph.ListMessagesInFolderAll(ctx, loginResult.AccessToken, folderID, args.Max)
+	} else if strings.TrimSpace(args.Folder) == "" {
 		messages, err = graph.ListInboxMessages(ctx, loginResult.AccessToken, args.Top)
 	} else {
 		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
@@ -2370,6 +2471,62 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 	})
 }
 
+// mailRuleUpdateHandler 更新收件箱规则。
+func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRuleUpdateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Name) == "" {
+		return nil, nil, fmt.Errorf("规则 ID 和名称不能为空")
+	}
+	if len(args.From) == 0 && len(args.SubjectContains) == 0 {
+		return nil, nil, fmt.Errorf("至少需要一个规则条件")
+	}
+	if strings.TrimSpace(args.MoveTo) == "" && !args.MarkAsRead && !args.Delete && !args.Stop {
+		return nil, nil, fmt.Errorf("至少需要一个规则动作")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	moveTo := strings.TrimSpace(args.MoveTo)
+	if moveTo != "" {
+		moveTo, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, moveTo)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	rule, err := graph.UpdateMessageRule(ctx, loginResult.AccessToken, args.ID, graph.MessageRuleInput{
+		DisplayName:         args.Name,
+		FromAddresses:       args.From,
+		SubjectContains:     args.SubjectContains,
+		MoveToFolder:        moveTo,
+		MarkAsRead:          args.MarkAsRead,
+		Delete:              args.Delete,
+		StopProcessingRules: args.Stop,
+		IsEnabled:           !args.Disabled,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"rule":    rule,
+	})
+}
+
 // mailRuleDeleteHandler 删除收件箱规则。
 func mailRuleDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRuleDeleteArgs) (*mcp.CallToolResult, any, error) {
 	if strings.TrimSpace(args.ID) == "" {
@@ -2457,6 +2614,40 @@ func mailMasterCategoryCreateHandler(ctx context.Context, req *mcp.CallToolReque
 		return nil, nil, err
 	}
 	category, err := graph.CreateMasterCategory(ctx, loginResult.AccessToken, args.Name, args.Color)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"category": category,
+	})
+}
+
+// mailMasterCategoryUpdateHandler 更新主类别。
+func mailMasterCategoryUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args mailMasterCategoryUpdateArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Color) == "" {
+		return nil, nil, fmt.Errorf("类别 ID 和颜色不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	category, err := graph.UpdateMasterCategory(ctx, loginResult.AccessToken, args.ID, args.Color)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -2843,6 +3034,193 @@ func contactsPhotoSetHandler(ctx context.Context, req *mcp.CallToolRequest, args
 		"contactId":   args.ID,
 		"contentType": contentType,
 		"size":        len(data),
+	})
+}
+
+// calendarAttachmentsHandler 列出日历事件附件。
+func calendarAttachmentsHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentsArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachments, err := graph.ListCalendarEventAttachments(ctx, loginResult.AccessToken, args.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":     true,
+		"account":     selected.Username,
+		"eventId":     args.ID,
+		"attachments": attachments,
+	})
+}
+
+// calendarAttachmentAddHandler 给日历事件添加附件。
+func calendarAttachmentAddHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentAddArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 和附件文件不能为空")
+	}
+	data, err := os.ReadFile(args.File)
+	if err != nil {
+		return nil, nil, fmt.Errorf("读取附件失败: %w", err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(args.File))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, graph.MailAttachmentInput{
+		Name:         filepath.Base(args.File),
+		ContentType:  contentType,
+		ContentBytes: data,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":    true,
+		"account":    selected.Username,
+		"eventId":    args.ID,
+		"attachment": attachment,
+	})
+}
+
+// calendarAttachmentGetHandler 下载日历事件附件。
+func calendarAttachmentGetHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentGetArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.AttachmentID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 和附件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, contentType, err := graph.GetCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"eventId":      args.ID,
+		"attachmentId": args.AttachmentID,
+		"contentType":  contentType,
+		"size":         len(data),
+		"base64":       base64.StdEncoding.EncodeToString(data),
+	})
+}
+
+// calendarCancelHandler 取消日历事件。
+func calendarCancelHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarCancelArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.CancelCalendarEvent(ctx, loginResult.AccessToken, args.ID, args.Comment); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"eventId": args.ID,
+	})
+}
+
+// calendarRespondHandler 响应日历邀请。
+func calendarRespondHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarRespondArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Response) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 和响应类型不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.RespondCalendarEvent(ctx, loginResult.AccessToken, args.ID, args.Response, args.Comment); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"eventId":  args.ID,
+		"response": args.Response,
 	})
 }
 

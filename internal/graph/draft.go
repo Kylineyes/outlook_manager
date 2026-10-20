@@ -32,7 +32,7 @@ func CreateDraft(ctx context.Context, accessToken string, input SendMailInput) (
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return "", fmt.Errorf("调用 Graph 创建草稿失败: %w", err)
 	}
@@ -51,6 +51,10 @@ func CreateDraft(ctx context.Context, accessToken string, input SendMailInput) (
 	}
 	if result.ID == "" {
 		return "", fmt.Errorf("草稿响应缺少 id")
+	}
+	if err := uploadLargeAttachmentsToDraft(ctx, accessToken, result.ID, input.Attachments); err != nil {
+		_ = DeleteMessage(ctx, accessToken, result.ID)
+		return "", err
 	}
 	return result.ID, nil
 }
@@ -77,7 +81,7 @@ func ListDrafts(ctx context.Context, accessToken string, top int) ([]Message, er
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 草稿列表失败: %w", err)
 	}
@@ -110,7 +114,7 @@ func SendDraft(ctx context.Context, accessToken, messageID string) error {
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 发送草稿失败: %w", err)
 	}
@@ -145,7 +149,7 @@ func UpdateDraft(ctx context.Context, accessToken, draftID string, input SendMai
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 更新草稿失败: %w", err)
 	}
@@ -157,6 +161,9 @@ func UpdateDraft(ctx context.Context, accessToken, draftID string, input SendMai
 	var detail MessageDetail
 	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
 		return nil, fmt.Errorf("解析更新草稿响应失败: %w", err)
+	}
+	if err := uploadLargeAttachmentsToDraft(ctx, accessToken, draftID, input.Attachments); err != nil {
+		return nil, err
 	}
 	return &detail, nil
 }

@@ -312,12 +312,16 @@ func runMail(args []string) error {
 		return runMailRules(args[1:])
 	case "rule-create":
 		return runMailRuleCreate(args[1:])
+	case "rule-update":
+		return runMailRuleUpdate(args[1:])
 	case "rule-delete":
 		return runMailRuleDelete(args[1:])
 	case "master-categories":
 		return runMailMasterCategories(args[1:])
 	case "master-category-create":
 		return runMailMasterCategoryCreate(args[1:])
+	case "master-category-update":
+		return runMailMasterCategoryUpdate(args[1:])
 	case "master-category-delete":
 		return runMailMasterCategoryDelete(args[1:])
 	default:
@@ -333,6 +337,8 @@ func runMailList(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	folderFlag := fs.String("folder", "", "指定文件夹名称或 ID；不填时使用收件箱")
 	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
+	allFlag := fs.Bool("all", false, "分页拉取多页邮件")
+	maxFlag := fs.Int("max", 500, "全量拉取时的最大邮件数量，范围 1-1000")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -359,7 +365,17 @@ func runMailList(args []string) error {
 	}
 
 	var messages []graph.Message
-	if strings.TrimSpace(*folderFlag) == "" {
+	if *allFlag {
+		folderID := "inbox"
+		if strings.TrimSpace(*folderFlag) != "" {
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			folderID = resolved
+		}
+		messages, err = graph.ListMessagesInFolderAll(ctx, loginResult.AccessToken, folderID, *maxFlag)
+	} else if strings.TrimSpace(*folderFlag) == "" {
 		messages, err = graph.ListInboxMessages(ctx, loginResult.AccessToken, *topFlag)
 	} else {
 		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
@@ -1720,12 +1736,22 @@ func runCalendar(args []string) error {
 		return runCalendarList(args[1:])
 	case "calendars":
 		return runCalendarCalendars(args[1:])
+	case "attachments":
+		return runCalendarAttachments(args[1:])
+	case "attachment-add":
+		return runCalendarAttachmentAdd(args[1:])
+	case "attachment-get":
+		return runCalendarAttachmentGet(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
 		return runCalendarUpdate(args[1:])
 	case "delete":
 		return runCalendarDelete(args[1:])
+	case "cancel":
+		return runCalendarCancel(args[1:])
+	case "respond":
+		return runCalendarRespond(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 calendar 子命令: %s", args[0])
@@ -2650,6 +2676,78 @@ func runMailRuleCreate(args []string) error {
 	return nil
 }
 
+// runMailRuleUpdate 更新收件箱规则。
+func runMailRuleUpdate(args []string) error {
+	fs := flag.NewFlagSet("mail rule-update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	idFlag := fs.String("id", "", "规则 ID")
+	nameFlag := fs.String("name", "", "规则名称")
+	fromFlag := fs.String("from", "", "发件人邮箱，多个用逗号分隔")
+	subjectFlag := fs.String("subject-contains", "", "主题包含关键字，多个用逗号分隔")
+	moveFlag := fs.String("move-to", "", "移动到文件夹名称或 ID")
+	markReadFlag := fs.Bool("mark-read", false, "标记为已读")
+	deleteFlag := fs.Bool("delete", false, "删除邮件")
+	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
+	disabledFlag := fs.Bool("disabled", false, "更新为禁用状态")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*nameFlag) == "" {
+		return errors.New("用法: outlookctl mail rule-update --id <规则ID> --name <名称> ...")
+	}
+	from := splitAddresses(*fromFlag)
+	subjects := splitAddresses(*subjectFlag)
+	if len(from) == 0 && len(subjects) == 0 {
+		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
+	}
+	if strings.TrimSpace(*moveFlag) == "" && !*markReadFlag && !*deleteFlag && !*stopFlag {
+		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	moveToFolder := strings.TrimSpace(*moveFlag)
+	if moveToFolder != "" {
+		moveToFolder, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, moveToFolder)
+		if err != nil {
+			return err
+		}
+	}
+	rule, err := graph.UpdateMessageRule(ctx, loginResult.AccessToken, *idFlag, graph.MessageRuleInput{
+		DisplayName:         *nameFlag,
+		FromAddresses:       from,
+		SubjectContains:     subjects,
+		MoveToFolder:        moveToFolder,
+		MarkAsRead:          *markReadFlag,
+		Delete:              *deleteFlag,
+		StopProcessingRules: *stopFlag,
+		IsEnabled:           !*disabledFlag,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "规则已更新: %s\n", rule.DisplayName)
+	fmt.Fprintf(os.Stdout, "规则 ID: %s\n", rule.ID)
+	return nil
+}
+
 // runMailRuleDelete 删除收件箱规则。
 func runMailRuleDelete(args []string) error {
 	fs := flag.NewFlagSet("mail rule-delete", flag.ContinueOnError)
@@ -2772,6 +2870,47 @@ func runMailMasterCategoryCreate(args []string) error {
 	}
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
 	fmt.Fprintf(os.Stdout, "主类别已创建: %s\n", category.DisplayName)
+	fmt.Fprintf(os.Stdout, "类别 ID: %s\n", category.ID)
+	return nil
+}
+
+// runMailMasterCategoryUpdate 更新主类别。
+func runMailMasterCategoryUpdate(args []string) error {
+	fs := flag.NewFlagSet("mail master-category-update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	idFlag := fs.String("id", "", "类别 ID")
+	colorFlag := fs.String("color", "", "类别颜色，例如 preset0")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*colorFlag) == "" {
+		return errors.New("用法: outlookctl mail master-category-update --id <类别ID> --color <颜色>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	category, err := graph.UpdateMasterCategory(ctx, loginResult.AccessToken, *idFlag, *colorFlag)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "主类别已更新: %s\n", category.DisplayName)
 	fmt.Fprintf(os.Stdout, "类别 ID: %s\n", category.ID)
 	return nil
 }
@@ -3265,6 +3404,235 @@ func runContactsPhotoSet(args []string) error {
 	return nil
 }
 
+// runCalendarAttachments 列出日历事件附件。
+func runCalendarAttachments(args []string) error {
+	fs := flag.NewFlagSet("calendar attachments", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachments --id <事件ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachments, err := graph.ListCalendarEventAttachments(ctx, loginResult.AccessToken, *idFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(attachments, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化日历附件列表失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "附件数量: %d\n", len(attachments))
+	for _, attachment := range attachments {
+		fmt.Fprintf(os.Stdout, "- %s | %s | %d 字节 | id=%s\n", attachment.Name, attachment.ContentType, attachment.Size, attachment.ID)
+	}
+	return nil
+}
+
+// runCalendarAttachmentAdd 给日历事件添加附件。
+func runCalendarAttachmentAdd(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-add", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	fileFlag := fs.String("file", "", "本地附件文件路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-add --id <事件ID> --file <附件路径>")
+	}
+	data, err := os.ReadFile(*fileFlag)
+	if err != nil {
+		return fmt.Errorf("读取附件失败: %w", err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(*fileFlag))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, graph.MailAttachmentInput{
+		Name:         filepath.Base(*fileFlag),
+		ContentType:  contentType,
+		ContentBytes: data,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已添加: %s\n", attachment.Name)
+	fmt.Fprintf(os.Stdout, "附件 ID: %s\n", attachment.ID)
+	return nil
+}
+
+// runCalendarAttachmentGet 下载日历事件附件。
+func runCalendarAttachmentGet(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-get", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "附件 ID")
+	outFlag := fs.String("out", "", "保存附件的本地路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" || strings.TrimSpace(*outFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out <文件路径>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	data, contentType, err := graph.GetCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(*outFlag, data, 0o600); err != nil {
+		return fmt.Errorf("保存日历附件失败: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已保存: %s\n", *outFlag)
+	fmt.Fprintf(os.Stdout, "内容类型: %s\n", contentType)
+	fmt.Fprintf(os.Stdout, "大小: %d 字节\n", len(data))
+	return nil
+}
+
+// runCalendarCancel 取消日历事件。
+func runCalendarCancel(args []string) error {
+	fs := flag.NewFlagSet("calendar cancel", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	commentFlag := fs.String("comment", "", "取消说明")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" {
+		return errors.New("用法: outlookctl calendar cancel --id <事件ID> [--comment <说明>]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.CancelCalendarEvent(ctx, loginResult.AccessToken, *idFlag, *commentFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历事件已取消: %s\n", *idFlag)
+	return nil
+}
+
+// runCalendarRespond 响应日历邀请。
+func runCalendarRespond(args []string) error {
+	fs := flag.NewFlagSet("calendar respond", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	responseFlag := fs.String("response", "", "响应类型: accept/decline/tentative")
+	commentFlag := fs.String("comment", "", "响应说明")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*responseFlag) == "" {
+		return errors.New("用法: outlookctl calendar respond --id <事件ID> --response accept|decline|tentative")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.RespondCalendarEvent(ctx, loginResult.AccessToken, *idFlag, *responseFlag, *commentFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历响应已发送: %s\n", *responseFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3288,10 +3656,15 @@ func printUsage() {
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
   outlookctl calendar list --days 7          查看未来日历事件
   outlookctl calendar calendars              列出日历
+  outlookctl calendar attachments --id <事件ID>  列出事件附件
+  outlookctl calendar attachment-add --id <事件ID> --file <文件>  添加事件附件
+  outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out <文件>  下载事件附件
   outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
   outlookctl calendar delete --id <事件ID>  删除事件
+  outlookctl calendar cancel --id <事件ID>  取消事件
+  outlookctl calendar respond --id <事件ID> --response accept  响应日历邀请
   outlookctl contacts list --top 50          查看联系人
   outlookctl contacts search --query <关键字>  搜索联系人
   outlookctl contacts folders               列出联系人文件夹
@@ -3324,9 +3697,11 @@ func printUsage() {
   outlookctl mail category-remove <id> --category <名称>  移除类别
   outlookctl mail rules                       列出收件箱规则
   outlookctl mail rule-create --name <名称>   创建收件箱规则
+  outlookctl mail rule-update --id <规则ID> --name <名称>  更新收件箱规则
   outlookctl mail rule-delete --id <规则ID>   删除收件箱规则
   outlookctl mail master-categories           列出主类别
   outlookctl mail master-category-create --name <名称>  创建主类别
+  outlookctl mail master-category-update --id <类别ID> --color preset5  更新主类别颜色
   outlookctl mail master-category-delete --id <类别ID>  删除主类别
   outlookctl version                       查看版本`)
 }

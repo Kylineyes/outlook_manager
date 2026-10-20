@@ -3,6 +3,7 @@ package graph
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -77,7 +78,7 @@ func ListCalendarEventsInCalendar(ctx context.Context, accessToken, calendarID s
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Prefer", `outlook.timezone="UTC"`)
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 日历事件失败: %w", err)
 	}
@@ -282,7 +283,7 @@ func CreateCalendarEvent(ctx context.Context, accessToken string, input Calendar
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 创建日历事件失败: %w", err)
 	}
@@ -321,7 +322,7 @@ func UpdateCalendarEvent(ctx context.Context, accessToken, eventID string, input
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 更新日历事件失败: %w", err)
 	}
@@ -350,7 +351,7 @@ func DeleteCalendarEvent(ctx context.Context, accessToken, eventID string) error
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 删除日历事件失败: %w", err)
 	}
@@ -383,7 +384,7 @@ func ListCalendars(ctx context.Context, accessToken string) ([]Calendar, error) 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("调用 Graph 日历列表失败: %w", err)
 	}
@@ -417,4 +418,200 @@ func ResolveCalendarID(ctx context.Context, accessToken, target string) (string,
 		}
 	}
 	return target, nil
+}
+
+// CalendarEventAttachment 表示日历事件附件。
+type CalendarEventAttachment struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ContentType string `json:"contentType"`
+	Size        int    `json:"size"`
+	IsInline    bool   `json:"isInline"`
+}
+
+// ListCalendarEventAttachments 读取日历事件附件列表。
+func ListCalendarEventAttachments(ctx context.Context, accessToken, eventID string) ([]CalendarEventAttachment, error) {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return nil, fmt.Errorf("事件 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/attachments"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建日历附件列表请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 日历附件列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 日历附件列表返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result struct {
+		Value []CalendarEventAttachment `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 Graph 日历附件列表失败: %w", err)
+	}
+	return result.Value, nil
+}
+
+// AddCalendarEventAttachment 给日历事件添加文件附件。
+func AddCalendarEventAttachment(ctx context.Context, accessToken, eventID string, attachment MailAttachmentInput) (*CalendarEventAttachment, error) {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return nil, fmt.Errorf("事件 ID 不能为空")
+	}
+	if strings.TrimSpace(attachment.Name) == "" || len(attachment.ContentBytes) == 0 {
+		return nil, fmt.Errorf("附件名称和内容不能为空")
+	}
+	contentType := strings.TrimSpace(attachment.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	payload := map[string]any{
+		"@odata.type":  "#microsoft.graph.fileAttachment",
+		"name":         attachment.Name,
+		"contentType":  contentType,
+		"contentBytes": base64.StdEncoding.EncodeToString(attachment.ContentBytes),
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化日历附件请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/attachments"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("创建添加日历附件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 添加日历附件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 添加日历附件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result CalendarEventAttachment
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 Graph 添加日历附件响应失败: %w", err)
+	}
+	return &result, nil
+}
+
+// GetCalendarEventAttachment 下载日历事件附件内容。
+func GetCalendarEventAttachment(ctx context.Context, accessToken, eventID, attachmentID string) ([]byte, string, error) {
+	eventID = strings.TrimSpace(eventID)
+	attachmentID = strings.TrimSpace(attachmentID)
+	if eventID == "" || attachmentID == "" {
+		return nil, "", fmt.Errorf("事件 ID 和附件 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/attachments/" + url.PathEscape(attachmentID) + "/$value"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("创建日历附件下载请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("调用 Graph 日历附件下载失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, "", fmt.Errorf("Graph 日历附件下载返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("读取日历附件内容失败: %w", err)
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
+// CancelCalendarEvent 取消日历事件并通知参与者。
+func CancelCalendarEvent(ctx context.Context, accessToken, eventID, comment string) error {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return fmt.Errorf("事件 ID 不能为空")
+	}
+	payload := map[string]any{}
+	if strings.TrimSpace(comment) != "" {
+		payload["comment"] = strings.TrimSpace(comment)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化取消日历事件请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/cancel"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建取消日历事件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 取消日历事件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 取消日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// RespondCalendarEvent 响应日历邀请。
+// response 支持 accept、decline、tentative。
+func RespondCalendarEvent(ctx context.Context, accessToken, eventID, response, comment string) error {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return fmt.Errorf("事件 ID 不能为空")
+	}
+	action := ""
+	switch strings.ToLower(strings.TrimSpace(response)) {
+	case "accept", "accepted":
+		action = "accept"
+	case "decline", "declined":
+		action = "decline"
+	case "tentative", "tentativelyaccept", "tentatively-accept":
+		action = "tentativelyAccept"
+	default:
+		return fmt.Errorf("不支持的响应类型: %s", response)
+	}
+	payload := map[string]any{"sendResponse": true}
+	if strings.TrimSpace(comment) != "" {
+		payload["comment"] = strings.TrimSpace(comment)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化日历响应请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/" + action
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建日历响应请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 日历响应失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 日历响应返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }

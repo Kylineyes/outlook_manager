@@ -60,7 +60,7 @@ func postMessageAction(ctx context.Context, accessToken, messageID, action strin
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := doGraphRequest(req)
 	if err != nil {
 		return fmt.Errorf("调用 Graph 邮件操作失败: %w", err)
 	}
