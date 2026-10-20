@@ -174,70 +174,20 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 提供以下 tools：
+`outlook-mcp` 通过 stdio 暴露 62 个 MCP tools，覆盖：
 
-- `account_list`
-- `auth_status`
-- `mail_list`
-- `mail_read`
-- `mail_search`
-- `mail_send`
-- `mail_mark_read`
-- `mail_mark_unread`
-- `mail_folders_list`
-- `mail_move`
-- `mail_delete`
-- `mail_permanent_delete`
-- `mail_attachments_list`
-- `mail_attachment_save`
-- `mail_message_categories`
-- `mail_category_add`
-- `mail_category_remove`
-- `mail_rules_list`
-- `mail_rule_create`
-- `mail_rule_delete`
-- `mail_rule_update`
-- `mail_master_categories_list`
-- `mail_master_category_create`
-- `mail_master_category_delete`
-- `mail_master_category_update`
-- `calendar_list`
-- `calendar_calendars_list`
-- `calendar_create`
-- `calendar_update`
-- `calendar_delete`
-- `calendar_cancel`
-- `calendar_respond`
-- `calendar_attachments_list`
-- `calendar_attachment_add`
-- `calendar_attachment_get`
-- `contacts_list`
-- `contacts_create`
-- `contacts_update`
-- `contacts_delete`
-- `contacts_permanent_delete`
-- `contacts_photo_get`
-- `contacts_photo_set`
-- `contacts_search`
-- `contacts_folders_list`
-- `contacts_folder_create`
-- `contacts_folder_delete`
-- `contacts_folder_rename`
-- `contacts_move`
-- `contacts_copy`
-- `mail_reply`
-- `mail_reply_all`
-- `mail_forward`
-- `mail_draft_create`
-- `mail_drafts_list`
-- `mail_draft_send`
-- `mail_draft_update`
-- `mail_folder_create`
-- `mail_folder_rename`
-- `mail_folder_delete`
-- `mail_flag`
-- `mail_unflag`
-- `mail_set_importance`
+- 账号与认证状态
+- 邮件读取、搜索、发送、回复、转发和草稿
+- 邮件附件、文件夹、类别、旗标和重要性
+- 收件箱规则与主类别
+- 日历事件、日历列表、事件附件和邀请响应
+- 联系人、联系人文件夹、地址和照片
+
+完整的 MCP 客户端配置、工具参数、调用示例和故障排查见：
+
+```text
+docs/mcp.md
+```
 
 ## 本地数据
 

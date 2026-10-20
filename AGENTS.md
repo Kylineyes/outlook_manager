@@ -37,6 +37,8 @@ outlook_manager/
 │   ├── graph/               # Microsoft Graph 业务封装
 │   ├── store/               # 本地配置与账号档案
 │   └── secure/              # DPAPI 等安全存储
+├── docs/
+│   └── mcp.md             # MCP 使用指南
 ├── .github/workflows/       # GitHub Actions
 ├── go.mod
 ├── AGENTS.md
@@ -49,7 +51,7 @@ outlook_manager/
 
 - `config.json`：公开配置，例如 clientId、authority、scopes，不保存密钥。
 - `accounts.json`：账号档案，可读，便于人工确认，不保存 token。
-- `token-cache.bin`：MSAL token cache，Windows 下使用 DPAPI 当前用户加密。
+- `token-cache.bin`：OAuth token cache，Windows 下使用 DPAPI 当前用户加密。
 - `logs\auth.log`：登录、刷新、失败日志，不记录 token。
 
 ### 3.4 第一阶段能力
