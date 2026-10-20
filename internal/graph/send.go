@@ -22,7 +22,6 @@ type SendMailInput struct {
 	SaveToSentItems        bool
 	Attachments            []MailAttachmentInput
 	Importance             string
-	Sensitivity            string
 	RequestReadReceipt     bool
 	RequestDeliveryReceipt bool
 }
@@ -78,15 +77,6 @@ func buildMessage(input SendMailInput) (map[string]any, error) {
 			return nil, fmt.Errorf("不支持的邮件重要性: %s", input.Importance)
 		}
 	}
-	if strings.TrimSpace(input.Sensitivity) != "" {
-		sensitivity := strings.ToLower(strings.TrimSpace(input.Sensitivity))
-		switch sensitivity {
-		case "normal", "personal", "private", "confidential":
-			message["sensitivity"] = sensitivity
-		default:
-			return nil, fmt.Errorf("不支持的邮件敏感度: %s", input.Sensitivity)
-		}
-	}
 	if input.RequestReadReceipt {
 		message["isReadReceiptRequested"] = true
 	}
@@ -124,6 +114,17 @@ func buildMessage(input SendMailInput) (map[string]any, error) {
 //
 // Graph 的 sendMail 接口成功时通常返回 202 Accepted，响应体为空。
 func SendMail(ctx context.Context, accessToken string, input SendMailInput) error {
+	if hasLargeAttachments(input.Attachments) {
+		draftID, err := CreateDraft(ctx, accessToken, input)
+		if err != nil {
+			return err
+		}
+		if err := SendDraft(ctx, accessToken, draftID); err != nil {
+			_ = DeleteMessage(ctx, accessToken, draftID)
+			return fmt.Errorf("发送带大附件的草稿失败: %w", err)
+		}
+		return nil
+	}
 	message, err := buildMessage(input)
 	if err != nil {
 		return err
