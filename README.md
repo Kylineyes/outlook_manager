@@ -12,6 +12,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 单封邮件详情
 - 邮件搜索
 - 邮件分页全量拉取
+- Graph 临时网络错误自动重试
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
