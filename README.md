@@ -31,6 +31,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件类别查看、添加、移除
 - 收件箱规则管理
 - 收件箱规则更新
+- 收件箱规则回放（dry-run / confirm）
+- 规则分类动作（assignCategories）
 - 主类别管理
 - 主类别颜色更新
 - 日历事件读取
@@ -121,6 +123,8 @@ outlookctl mail rules
 outlookctl mail rule-create --name "规则" --from someone@example.com --move-to "存档"
 outlookctl mail rule-delete --id <规则ID>
 outlookctl mail rule-update --id <规则ID> --name "规则" --subject-contains "关键字" --mark-read
+outlookctl mail rule-apply --id <规则ID> [--confirm]
+outlookctl mail rule-create --name "分类规则" --subject-contains "关键字" --category "项目A" --apply-now --confirm-apply
 outlookctl mail master-categories
 outlookctl mail master-category-create --name "项目A" --color preset0
 outlookctl mail master-category-delete --id <类别ID>
@@ -175,7 +179,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 62 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 63 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿

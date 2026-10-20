@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 62 个 MCP tools 的分组说明
+- 63 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 62 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 63 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -206,8 +206,9 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_folder_create` | 创建邮件文件夹 | `name`、`parent`、`account` |
 | `mail_folder_rename` | 重命名邮件文件夹 | `id`、`name`、`account` |
 | `mail_folder_delete` | 删除邮件文件夹 | `id`、`account` |
-| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`moveTo`、`markAsRead`、`delete`、`stop`、`disabled`、`account` |
+| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`moveTo`、`assignCategories`、`markAsRead`、`delete`、`stop`、`disabled`、`applyNow`、`confirmApply`、`applyFolder`、`applyMax`、`account` |
 | `mail_rule_update` | 更新收件箱规则 | `id` + 创建规则参数 |
+| `mail_rule_apply` | 回放规则到已有邮件，默认 dry-run | `id`、`folder`、`max`、`confirm`、`account` |
 | `mail_rule_delete` | 删除收件箱规则 | `id`、`account` |
 | `mail_master_category_create` | 创建主类别 | `name`、`color`、`account` |
 | `mail_master_category_update` | 更新主类别颜色 | `id`、`color`、`account` |
@@ -448,6 +449,42 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 }
 ```
 
+### 7.11 创建分类规则并立即回放
+
+```json
+{
+  "tool": "mail_rule_create",
+  "arguments": {
+    "name": "发票分类",
+    "from": ["billing@example.com"],
+    "assignCategories": ["财务"],
+    "markAsRead": true,
+    "disabled": true,
+    "applyNow": true,
+    "confirmApply": true,
+    "applyMax": 500
+  }
+}
+```
+
+不传 `confirmApply: true` 时只会对已有邮件做 dry-run，不会实际修改。
+
+### 7.12 回放已有规则
+
+```json
+{
+  "tool": "mail_rule_apply",
+  "arguments": {
+    "id": "<rule-id>",
+    "max": 500,
+    "confirm": true
+  }
+}
+```
+
+`mail_rule_apply` 默认也是 dry-run；确认后加 `"confirm": true`。
+
+说明：Microsoft Graph 没有「立即运行规则」的官方端点。这里是本地回放功能，只支持可安全解析的常见条件和动作；遇到不支持的规则条件或动作会拒绝执行，避免误处理邮件。
 ## 8. 返回格式
 
 大多数 tools 返回 JSON 文本，外层通常包含：
