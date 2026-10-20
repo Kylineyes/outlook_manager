@@ -145,3 +145,59 @@ func SearchMessagesInFolder(ctx context.Context, accessToken, folderID, query st
 	}
 	return result.Value, nil
 }
+
+// ListMessagesInFolderAll 分页读取指定文件夹中的邮件，最多返回 max 封。
+func ListMessagesInFolderAll(ctx context.Context, accessToken, folderID string, max int) ([]Message, error) {
+	folderID = strings.TrimSpace(folderID)
+	if folderID == "" {
+		folderID = "inbox"
+	}
+	if max <= 0 {
+		max = 500
+	}
+	if max > 1000 {
+		max = 1000
+	}
+	pageSize := max
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	query := url.Values{}
+	query.Set("$top", strconv.Itoa(pageSize))
+	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from")
+	query.Set("$orderby", "receivedDateTime desc")
+	nextURL := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID) + "/messages?" + query.Encode()
+	messages := make([]Message, 0, pageSize)
+	for nextURL != "" && len(messages) < max {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("创建邮件分页请求失败: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Accept", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("调用 Graph 邮件分页失败: %w", err)
+		}
+		var result struct {
+			Value    []Message `json:"value"`
+			NextLink string    `json:"@odata.nextLink"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("Graph 邮件分页返回异常状态: HTTP %d", resp.StatusCode)
+		}
+		if decodeErr != nil {
+			return nil, fmt.Errorf("解析 Graph 邮件分页失败: %w", decodeErr)
+		}
+		for _, message := range result.Value {
+			if len(messages) >= max {
+				break
+			}
+			messages = append(messages, message)
+		}
+		nextURL = result.NextLink
+	}
+	return messages, nil
+}

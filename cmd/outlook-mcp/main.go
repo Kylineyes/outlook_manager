@@ -37,6 +37,8 @@ type mailListArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 	Folder  string `json:"folder,omitempty" jsonschema:"文件夹名称或 ID；不填时使用收件箱"`
 	Top     int    `json:"top,omitempty" jsonschema:"最多返回多少封邮件，默认 10，最大 100"`
+	All     bool   `json:"all,omitempty" jsonschema:"是否分页拉取多页邮件"`
+	Max     int    `json:"max,omitempty" jsonschema:"全量拉取时的最大邮件数量，默认 500，最大 1000"`
 }
 
 // mailReadArgs 是 mail_read tool 的输入参数。
@@ -831,7 +833,17 @@ func mailListHandler(ctx context.Context, req *mcp.CallToolRequest, args mailLis
 		return nil, nil, err
 	}
 	var messages []graph.Message
-	if strings.TrimSpace(args.Folder) == "" {
+	if args.All {
+		folderID := "inbox"
+		if strings.TrimSpace(args.Folder) != "" {
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+			if resolveErr != nil {
+				return nil, nil, resolveErr
+			}
+			folderID = resolved
+		}
+		messages, err = graph.ListMessagesInFolderAll(ctx, loginResult.AccessToken, folderID, args.Max)
+	} else if strings.TrimSpace(args.Folder) == "" {
 		messages, err = graph.ListInboxMessages(ctx, loginResult.AccessToken, args.Top)
 	} else {
 		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)

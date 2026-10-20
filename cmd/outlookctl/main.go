@@ -333,6 +333,8 @@ func runMailList(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	folderFlag := fs.String("folder", "", "指定文件夹名称或 ID；不填时使用收件箱")
 	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
+	allFlag := fs.Bool("all", false, "分页拉取多页邮件")
+	maxFlag := fs.Int("max", 500, "全量拉取时的最大邮件数量，范围 1-1000")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -359,7 +361,17 @@ func runMailList(args []string) error {
 	}
 
 	var messages []graph.Message
-	if strings.TrimSpace(*folderFlag) == "" {
+	if *allFlag {
+		folderID := "inbox"
+		if strings.TrimSpace(*folderFlag) != "" {
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			folderID = resolved
+		}
+		messages, err = graph.ListMessagesInFolderAll(ctx, loginResult.AccessToken, folderID, *maxFlag)
+	} else if strings.TrimSpace(*folderFlag) == "" {
 		messages, err = graph.ListInboxMessages(ctx, loginResult.AccessToken, *topFlag)
 	} else {
 		folderID, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
