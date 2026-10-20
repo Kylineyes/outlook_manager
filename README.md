@@ -28,6 +28,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件发送选项（重要性、已读回执、送达回执）
 - 邮件类别查看、添加、移除
 - 收件箱规则管理
+- 收件箱规则更新
 - 主类别管理
 - 日历事件读取
 - 多日历列表与按日历查询事件
@@ -114,6 +115,7 @@ outlookctl mail category-remove <message-id> --category "名称"
 outlookctl mail rules
 outlookctl mail rule-create --name "规则" --from someone@example.com --move-to "存档"
 outlookctl mail rule-delete --id <规则ID>
+outlookctl mail rule-update --id <规则ID> --name "规则" --subject-contains "关键字" --mark-read
 outlookctl mail master-categories
 outlookctl mail master-category-create --name "项目A" --color preset0
 outlookctl mail master-category-delete --id <类别ID>
@@ -187,6 +189,7 @@ outlookctl mail importance <message-id> --level high
 - `mail_rules_list`
 - `mail_rule_create`
 - `mail_rule_delete`
+- `mail_rule_update`
 - `mail_master_categories_list`
 - `mail_master_category_create`
 - `mail_master_category_delete`
