@@ -206,9 +206,9 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_folder_create` | 创建邮件文件夹 | `name`、`parent`、`account` |
 | `mail_folder_rename` | 重命名邮件文件夹 | `id`、`name`、`account` |
 | `mail_folder_delete` | 删除邮件文件夹 | `id`、`account` |
-| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`moveTo`、`assignCategories`、`markAsRead`、`delete`、`stop`、`disabled`、`applyNow`、`confirmApply`、`applyFolder`、`applyMax`、`account` |
+| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`moveTo`、`assignCategories`、`markAsRead`、`delete`、`stop`、`disabled`、`applyNow`、`confirmApply`、`applyFolder`、`applyFolders`、`applyMax`、`account` |
 | `mail_rule_update` | 更新收件箱规则 | `id` + 创建规则参数 |
-| `mail_rule_apply` | 回放规则到已有邮件，默认 dry-run | `id`、`folder`、`max`、`confirm`、`account` |
+| `mail_rule_apply` | 回放规则到已有邮件，默认 dry-run | `id`、`folder`、`folders`、`max`、`confirm`、`account` |
 | `mail_rule_delete` | 删除收件箱规则 | `id`、`account` |
 | `mail_master_category_create` | 创建主类别 | `name`、`color`、`account` |
 | `mail_master_category_update` | 更新主类别颜色 | `id`、`color`、`account` |
@@ -487,6 +487,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 `mail_rule_apply` 默认也是 dry-run；确认后加 `"confirm": true`。
 
 说明：Microsoft Graph 没有「立即运行规则」的官方端点。这里是本地回放功能，只支持可安全解析的常见条件和动作；遇到不支持的规则条件或动作会拒绝执行，避免误处理邮件。
+
+当前回放支持完整正文匹配（HTML 会转换为纯文本）、多文件夹扫描，以及 `copyToFolder`、`forwardTo`、`redirectTo` 等动作。
 ## 8. 返回格式
 
 大多数 tools 返回 JSON 文本，外层通常包含：
@@ -551,6 +553,7 @@ Graph 请求层会自动重试临时网络错误、HTTP 429 和 5xx。若仍失�
 - token-cache.bin 使用 Windows DPAPI 加密，只能由同一 Windows 用户解密
 - accounts.json 是可读账号元数据，不包含 token
 - 不要把 token-cache.bin 提交到仓库或发送给他人
+- `logs/audit.log` 记录关键写操作，不记录邮件正文、附件内容或 token
 - MCP tools 可以读取本机指定路径并上传为附件，请只连接可信的 MCP 客户端
 - 永久删除、取消会议、发送邮件等操作不可逆，建议在自动化流程中增加人工确认
 

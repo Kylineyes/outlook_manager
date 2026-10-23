@@ -13,6 +13,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件搜索
 - 邮件分页全量拉取
 - Graph 与 token 请求临时错误自动重试
+- CLI 子命令 --help 体系
+- 本地操作审计日志
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -31,8 +33,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件类别查看、添加、移除
 - 收件箱规则管理
 - 收件箱规则更新
-- 收件箱规则回放（dry-run / confirm）
-- 规则分类动作（assignCategories）
+- 收件箱规则回放（完整正文、多文件夹、dry-run / confirm）
+- 规则动作（分类、复制、移动、转发、重定向、删除）
 - 主类别管理
 - 主类别颜色更新
 - 日历事件读取
@@ -209,6 +211,7 @@ docs/mcp.md
 - `accounts.json`：可读账号档案，不保存 token
 - `token-cache.bin`：DPAPI 加密后的 access token 和 refresh token
 - `logs\auth.log`：预留的认证日志位置
+- `logs\audit.log`：JSON Lines 操作审计日志
 
 ## 开发
 

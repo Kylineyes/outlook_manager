@@ -53,6 +53,7 @@ outlook_manager/
 - `accounts.json`：账号档案，可读，便于人工确认，不保存 token。
 - `token-cache.bin`：OAuth token cache，Windows 下使用 DPAPI 当前用户加密。
 - `logs\auth.log`：登录、刷新、失败日志，不记录 token。
+- `logs\audit.log`：关键写操作的 JSON Lines 审计日志，不记录正文、附件或 token。
 
 ### 3.4 第一阶段能力
 
