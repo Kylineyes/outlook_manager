@@ -233,6 +233,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 
 说明：`calendar_respond` 只能用于别人发来的会议邀请；如果当前账号是会议组织者，Graph 会拒绝响应。`calendar_cancel` 通常也需要当前账号是会议组织者。
 
+`calendar_attachment_add` 支持最大 150 MiB 的事件附件；超过 3 MiB 时会自动使用 Graph 上传会话。
+
 ### 6.5 联系人
 
 | Tool | 说明 | 主要参数 |

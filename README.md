@@ -12,7 +12,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 单封邮件详情
 - 邮件搜索
 - 邮件分页全量拉取
-- Graph 临时网络错误自动重试
+- Graph 与 token 请求临时错误自动重试
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -41,6 +41,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 日历参与人与提醒
 - 日历事件分类、状态、重要性、敏感度
 - 日历事件附件读取、添加、下载
+- 日历事件大附件上传（3 MiB - 150 MiB）
 - 日历事件取消
 - 日历邀请响应（接受、拒绝、暂定）
 - 联系人读取
