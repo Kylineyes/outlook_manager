@@ -31,21 +31,28 @@ type EventOrganizer struct {
 	EmailAddress EmailAddress `json:"emailAddress"`
 }
 
+// EventResponseStatus 表示参与人对日历事件的响应状态。
+type EventResponseStatus struct {
+	Response string `json:"response,omitempty"`
+	Time     string `json:"time,omitempty"`
+}
+
 // CalendarEvent 表示一个日历事件。
 type CalendarEvent struct {
-	ID          string           `json:"id"`
-	Subject     string           `json:"subject"`
-	Start       DateTimeTimeZone `json:"start"`
-	End         DateTimeTimeZone `json:"end"`
-	Location    EventLocation    `json:"location"`
-	Organizer   EventOrganizer   `json:"organizer"`
-	IsAllDay    bool             `json:"isAllDay"`
-	WebLink     string           `json:"webLink"`
-	BodyPreview string           `json:"bodyPreview"`
-	Categories  []string         `json:"categories,omitempty"`
-	ShowAs      string           `json:"showAs,omitempty"`
-	Importance  string           `json:"importance,omitempty"`
-	Sensitivity string           `json:"sensitivity,omitempty"`
+	ID             string               `json:"id"`
+	Subject        string               `json:"subject"`
+	Start          DateTimeTimeZone     `json:"start"`
+	End            DateTimeTimeZone     `json:"end"`
+	Location       EventLocation        `json:"location"`
+	Organizer      EventOrganizer       `json:"organizer"`
+	IsAllDay       bool                 `json:"isAllDay"`
+	WebLink        string               `json:"webLink"`
+	BodyPreview    string               `json:"bodyPreview"`
+	Categories     []string             `json:"categories,omitempty"`
+	ShowAs         string               `json:"showAs,omitempty"`
+	Importance     string               `json:"importance,omitempty"`
+	Sensitivity    string               `json:"sensitivity,omitempty"`
+	ResponseStatus *EventResponseStatus `json:"responseStatus,omitempty"`
 }
 
 // ListCalendarEvents 读取默认日历在指定时间范围内的事件。
@@ -66,7 +73,7 @@ func ListCalendarEventsInCalendar(ctx context.Context, accessToken, calendarID s
 	query.Set("startDateTime", start.UTC().Format(time.RFC3339))
 	query.Set("endDateTime", end.UTC().Format(time.RFC3339))
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity")
+	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity,responseStatus")
 	query.Set("$orderby", "start/dateTime")
 	endpoint := graphBaseURL + "/me/calendarView?" + query.Encode()
 	if strings.TrimSpace(calendarID) != "" {

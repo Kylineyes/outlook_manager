@@ -197,6 +197,8 @@ outlookctl mail importance <message-id> --level high
 docs/mcp.md
 ```
 
+双账号日历验证计划见：`docs/calendar-invite-test-plan.md`。
+
 ## 本地数据
 
 默认数据目录：
