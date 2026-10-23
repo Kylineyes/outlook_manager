@@ -3582,15 +3582,14 @@ func runCalendarAttachmentAdd(args []string) error {
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
 		return errors.New("用法: outlookctl calendar attachment-add --id <事件ID> --file <附件路径>")
 	}
-	data, err := os.ReadFile(*fileFlag)
+	attachments, err := graph.LoadMailAttachments([]string{*fileFlag})
 	if err != nil {
-		return fmt.Errorf("读取附件失败: %w", err)
+		return err
 	}
-	contentType := mime.TypeByExtension(filepath.Ext(*fileFlag))
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	if len(attachments) == 0 {
+		return fmt.Errorf("附件文件不能为空")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	client, err := auth.NewClient()
 	if err != nil {
@@ -3608,11 +3607,7 @@ func runCalendarAttachmentAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, graph.MailAttachmentInput{
-		Name:         filepath.Base(*fileFlag),
-		ContentType:  contentType,
-		ContentBytes: data,
-	})
+	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, attachments[0])
 	if err != nil {
 		return err
 	}

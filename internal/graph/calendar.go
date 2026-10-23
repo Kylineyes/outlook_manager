@@ -466,8 +466,14 @@ func AddCalendarEventAttachment(ctx context.Context, accessToken, eventID string
 	if eventID == "" {
 		return nil, fmt.Errorf("事件 ID 不能为空")
 	}
-	if strings.TrimSpace(attachment.Name) == "" || len(attachment.ContentBytes) == 0 {
-		return nil, fmt.Errorf("附件名称和内容不能为空")
+	if strings.TrimSpace(attachment.Name) == "" {
+		return nil, fmt.Errorf("附件名称不能为空")
+	}
+	if attachment.Path != "" && attachment.Size > simpleAttachmentLimit {
+		return addLargeCalendarEventAttachment(ctx, accessToken, eventID, attachment)
+	}
+	if len(attachment.ContentBytes) == 0 {
+		return nil, fmt.Errorf("附件内容不能为空")
 	}
 	contentType := strings.TrimSpace(attachment.ContentType)
 	if contentType == "" {

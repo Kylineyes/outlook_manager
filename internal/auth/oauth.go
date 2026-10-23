@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -213,23 +215,95 @@ func (c *oauthClient) refreshAccessToken(ctx context.Context, refreshToken strin
 
 // postForm 发送 application/x-www-form-urlencoded POST 请求。
 // 返回的 body 已经读取完毕；调用方无需关闭响应体。
+// 对临时网络错误、HTTP 429 和 5xx 做有限重试。
 func (c *oauthClient) postForm(ctx context.Context, endpoint string, form url.Values) (*http.Response, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, nil, err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, nil, err
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			if attempt >= maxAttempts || !isRetryableTokenError(err) {
+				return nil, nil, err
+			}
+			if err := sleepTokenRetry(ctx, tokenRetryDelay(attempt, "")); err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if err != nil {
+			return nil, nil, err
+		}
+		if shouldRetryTokenStatus(resp.StatusCode) && attempt < maxAttempts {
+			if err := sleepTokenRetry(ctx, tokenRetryDelay(attempt, resp.Header.Get("Retry-After"))); err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
+		return resp, body, nil
 	}
-	defer resp.Body.Close()
+	if lastErr != nil {
+		return nil, nil, lastErr
+	}
+	return nil, nil, errors.New("token 请求重试次数已用尽")
+}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, nil, err
+func shouldRetryTokenStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
 	}
-	return resp, body, nil
+}
+
+func isRetryableTokenError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	for _, keyword := range []string{"connection reset", "connection refused", "tls handshake timeout", "unexpected eof", "i/o timeout", "wsarecv", "forcibly closed"} {
+		if strings.Contains(message, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func tokenRetryDelay(attempt int, retryAfter string) time.Duration {
+	if seconds, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && seconds > 0 {
+		if seconds > 30 {
+			seconds = 30
+		}
+		return time.Duration(seconds) * time.Second
+	}
+	delay := time.Duration(300*attempt) * time.Millisecond
+	if delay > 2*time.Second {
+		delay = 2 * time.Second
+	}
+	return delay
+}
+
+func sleepTokenRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }

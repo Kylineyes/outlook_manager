@@ -3163,15 +3163,14 @@ func calendarAttachmentAddHandler(ctx context.Context, req *mcp.CallToolRequest,
 	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.File) == "" {
 		return nil, nil, fmt.Errorf("事件 ID 和附件文件不能为空")
 	}
-	data, err := os.ReadFile(args.File)
+	attachments, err := graph.LoadMailAttachments([]string{args.File})
 	if err != nil {
-		return nil, nil, fmt.Errorf("读取附件失败: %w", err)
+		return nil, nil, err
 	}
-	contentType := mime.TypeByExtension(filepath.Ext(args.File))
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	if len(attachments) == 0 {
+		return nil, nil, fmt.Errorf("附件文件不能为空")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
 	client, err := auth.NewClient()
 	if err != nil {
@@ -3189,11 +3188,7 @@ func calendarAttachmentAddHandler(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, nil, err
 	}
-	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, graph.MailAttachmentInput{
-		Name:         filepath.Base(args.File),
-		ContentType:  contentType,
-		ContentBytes: data,
-	})
+	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, attachments[0])
 	if err != nil {
 		return nil, nil, err
 	}
