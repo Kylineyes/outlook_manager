@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"io"
 	"net/http"
 	"net/url"
@@ -53,6 +54,7 @@ func MoveMessage(ctx context.Context, accessToken, messageID, destinationID stri
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("解析移动邮件响应失败: %w", err)
 	}
+	audit.Log("mail.move", map[string]any{"messageId": messageID, "destinationId": destinationID})
 	return result.ID, nil
 }
 
@@ -79,6 +81,7 @@ func DeleteMessage(ctx context.Context, accessToken, messageID string) error {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 删除邮件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("mail.delete", map[string]any{"messageId": messageID})
 	return nil
 }
 
@@ -162,5 +165,44 @@ func PermanentDeleteMessage(ctx context.Context, accessToken, messageID string) 
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 永久删除邮件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("mail.permanentDelete", map[string]any{"messageId": messageID})
 	return nil
+}
+
+// CopyMessage 把邮件复制到指定文件夹，并返回新邮件 ID。
+func CopyMessage(ctx context.Context, accessToken, messageID, destinationID string) (string, error) {
+	messageID = strings.TrimSpace(messageID)
+	destinationID = strings.TrimSpace(destinationID)
+	if messageID == "" || destinationID == "" {
+		return "", fmt.Errorf("邮件 ID 和目标文件夹 ID 不能为空")
+	}
+	payload, err := json.Marshal(map[string]string{"destinationId": destinationID})
+	if err != nil {
+		return "", fmt.Errorf("序列化复制邮件请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/messages/" + url.PathEscape(messageID) + "/copy"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("创建复制邮件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return "", fmt.Errorf("调用 Graph 复制邮件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("Graph 复制邮件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("解析复制邮件响应失败: %w", err)
+	}
+	audit.Log("mail.copy", map[string]any{"messageId": messageID, "destinationId": destinationID})
+	return result.ID, nil
 }

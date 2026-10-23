@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"io"
 	"net/http"
 	"net/url"
@@ -296,6 +297,7 @@ func CreateCalendarEvent(ctx context.Context, accessToken string, input Calendar
 	if err := json.NewDecoder(resp.Body).Decode(&event); err != nil {
 		return nil, fmt.Errorf("解析创建日历事件响应失败: %w", err)
 	}
+	audit.Log("calendar.create", map[string]any{"eventId": event.ID, "subject": event.Subject})
 	return &event, nil
 }
 
@@ -335,6 +337,7 @@ func UpdateCalendarEvent(ctx context.Context, accessToken, eventID string, input
 	if err := json.NewDecoder(resp.Body).Decode(&event); err != nil {
 		return nil, fmt.Errorf("解析更新日历事件响应失败: %w", err)
 	}
+	audit.Log("calendar.update", map[string]any{"eventId": event.ID, "subject": event.Subject})
 	return &event, nil
 }
 
@@ -360,6 +363,7 @@ func DeleteCalendarEvent(ctx context.Context, accessToken, eventID string) error
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 删除日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("calendar.delete", map[string]any{"eventId": eventID})
 	return nil
 }
 
@@ -573,6 +577,7 @@ func CancelCalendarEvent(ctx context.Context, accessToken, eventID, comment stri
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 取消日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("calendar.cancel", map[string]any{"eventId": eventID})
 	return nil
 }
 
@@ -619,5 +624,6 @@ func RespondCalendarEvent(ctx context.Context, accessToken, eventID, response, c
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 日历响应返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("calendar.respond", map[string]any{"eventId": eventID, "response": response})
 	return nil
 }

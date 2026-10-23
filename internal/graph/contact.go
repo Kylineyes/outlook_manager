@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"io"
 	"net/http"
 	"net/url"
@@ -210,6 +211,7 @@ func CreateContactInFolder(ctx context.Context, accessToken, folderID string, in
 	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
 		return nil, fmt.Errorf("解析创建联系人响应失败: %w", err)
 	}
+	audit.Log("contacts.create", map[string]any{"contactId": contact.ID, "displayName": contact.DisplayName})
 	return &contact, nil
 }
 
@@ -244,6 +246,7 @@ func UpdateContact(ctx context.Context, accessToken, contactID string, input Con
 	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
 		return nil, fmt.Errorf("解析更新联系人响应失败: %w", err)
 	}
+	audit.Log("contacts.update", map[string]any{"contactId": contact.ID, "displayName": contact.DisplayName})
 	return &contact, nil
 }
 
@@ -269,6 +272,7 @@ func DeleteContact(ctx context.Context, accessToken, contactID string) error {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 删除联系人返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("contacts.delete", map[string]any{"contactId": contactID})
 	return nil
 }
 
@@ -571,6 +575,7 @@ func PermanentDeleteContact(ctx context.Context, accessToken, contactID string) 
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 永久删除联系人返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("contacts.permanentDelete", map[string]any{"contactId": contactID})
 	return nil
 }
 
@@ -631,5 +636,6 @@ func SetContactPhoto(ctx context.Context, accessToken, contactID string, data []
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 更新联系人照片返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("contacts.photo.set", map[string]any{"contactId": contactID, "size": len(data)})
 	return nil
 }

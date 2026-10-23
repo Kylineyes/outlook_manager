@@ -371,6 +371,7 @@ type mailRuleCreateArgs struct {
 	ApplyFolder      string   `json:"applyFolder,omitempty" jsonschema:"回放规则的目标文件夹；不填时使用收件箱"`
 	ApplyMax         int      `json:"applyMax,omitempty" jsonschema:"回放时最多扫描多少封邮件，默认 500"`
 	AssignCategories []string `json:"assignCategories,omitempty" jsonschema:"给邮件添加的类别列表"`
+	ApplyFolders     []string `json:"applyFolders,omitempty" jsonschema:"回放规则的目标文件夹列表"`
 }
 
 // mailRuleUpdateArgs 是 mail_rule_update tool 的输入参数。
@@ -396,11 +397,12 @@ type mailRuleDeleteArgs struct {
 
 // mailRuleApplyArgs 是 mail_rule_apply tool 的输入参数。
 type mailRuleApplyArgs struct {
-	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	ID      string `json:"id" jsonschema:"规则 ID"`
-	Folder  string `json:"folder,omitempty" jsonschema:"目标文件夹名称或 ID；不填时使用收件箱"`
-	Max     int    `json:"max,omitempty" jsonschema:"最多扫描多少封邮件，默认 500，最大 1000"`
-	Confirm bool   `json:"confirm,omitempty" jsonschema:"确认实际修改邮件；不填时只 dry-run"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID      string   `json:"id" jsonschema:"规则 ID"`
+	Folder  string   `json:"folder,omitempty" jsonschema:"目标文件夹名称或 ID；不填时使用收件箱"`
+	Max     int      `json:"max,omitempty" jsonschema:"最多扫描多少封邮件，默认 500，最大 1000"`
+	Confirm bool     `json:"confirm,omitempty" jsonschema:"确认实际修改邮件；不填时只 dry-run"`
+	Folders []string `json:"folders,omitempty" jsonschema:"目标文件夹名称或 ID 列表"`
 }
 
 // mailMasterCategoriesArgs 是 mail_master_categories_list tool 的输入参数。
@@ -2487,15 +2489,31 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 	}
 	var applyResult *graph.RuleApplyResult
 	if args.ApplyNow {
-		folderID := "inbox"
-		if strings.TrimSpace(args.ApplyFolder) != "" {
-			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.ApplyFolder)
-			if resolveErr != nil {
-				return nil, nil, resolveErr
+		folderIDs := make([]string, 0)
+		if len(args.ApplyFolders) > 0 {
+			for _, folder := range args.ApplyFolders {
+				folder = strings.TrimSpace(folder)
+				if folder == "" {
+					continue
+				}
+				resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, folder)
+				if resolveErr != nil {
+					return nil, nil, resolveErr
+				}
+				folderIDs = append(folderIDs, resolved)
 			}
-			folderID = resolved
+		} else {
+			folderID := "inbox"
+			if strings.TrimSpace(args.ApplyFolder) != "" {
+				resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.ApplyFolder)
+				if resolveErr != nil {
+					return nil, nil, resolveErr
+				}
+				folderID = resolved
+			}
+			folderIDs = append(folderIDs, folderID)
 		}
-		applyResult, err = graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, args.ApplyMax, args.ConfirmApply)
+		applyResult, err = graph.ApplyMessageRuleToFolders(ctx, loginResult.AccessToken, rule, folderIDs, args.ApplyMax, args.ConfirmApply)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2569,11 +2587,12 @@ func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 }
 
 // mailRuleApplyHandler 把一条收件箱规则回放到已有邮件。
+// mailRuleApplyHandler 把一条收件箱规则回放到已有邮件。
 func mailRuleApplyHandler(ctx context.Context, req *mcp.CallToolRequest, args mailRuleApplyArgs) (*mcp.CallToolResult, any, error) {
 	if strings.TrimSpace(args.ID) == "" {
 		return nil, nil, fmt.Errorf("规则 ID 不能为空")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
 	client, err := auth.NewClient()
 	if err != nil {
@@ -2595,14 +2614,30 @@ func mailRuleApplyHandler(ctx context.Context, req *mcp.CallToolRequest, args ma
 	if err != nil {
 		return nil, nil, err
 	}
-	folderID := "inbox"
-	if strings.TrimSpace(args.Folder) != "" {
-		folderID, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
-		if err != nil {
-			return nil, nil, err
+	folderIDs := make([]string, 0)
+	if len(args.Folders) > 0 {
+		for _, folder := range args.Folders {
+			folder = strings.TrimSpace(folder)
+			if folder == "" {
+				continue
+			}
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, folder)
+			if resolveErr != nil {
+				return nil, nil, resolveErr
+			}
+			folderIDs = append(folderIDs, resolved)
 		}
+	} else {
+		folderID := "inbox"
+		if strings.TrimSpace(args.Folder) != "" {
+			folderID, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		folderIDs = append(folderIDs, folderID)
 	}
-	result, err := graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, args.Max, args.Confirm)
+	result, err := graph.ApplyMessageRuleToFolders(ctx, loginResult.AccessToken, rule, folderIDs, args.Max, args.Confirm)
 	if err != nil {
 		return nil, nil, err
 	}

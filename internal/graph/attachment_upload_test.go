@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -81,5 +82,36 @@ func TestHasLargeAttachments(t *testing.T) {
 	}
 	if !hasLargeAttachments([]MailAttachmentInput{{Size: 2 * 1024 * 1024}, {Size: 2 * 1024 * 1024}}) {
 		t.Fatal("attachments whose total exceeds simple limit should be treated as large")
+	}
+}
+
+func TestLoadMailAttachmentsSplitsSmallAndLarge(t *testing.T) {
+	dir := t.TempDir()
+	smallPath := filepath.Join(dir, "small.txt")
+	largePath := filepath.Join(dir, "large.bin")
+	if err := os.WriteFile(smallPath, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(largePath, make([]byte, simpleAttachmentLimit+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	attachments, err := LoadMailAttachments([]string{smallPath, largePath})
+	if err != nil {
+		t.Fatalf("LoadMailAttachments returned error: %v", err)
+	}
+	if len(attachments) != 2 {
+		t.Fatalf("attachments = %d, want 2", len(attachments))
+	}
+	if len(attachments[0].ContentBytes) == 0 || attachments[0].Path != smallPath {
+		t.Fatalf("small attachment not loaded into memory: %#v", attachments[0])
+	}
+	if len(attachments[1].ContentBytes) != 0 || attachments[1].Path != largePath {
+		t.Fatalf("large attachment should keep path only: %#v", attachments[1])
+	}
+	if attachments[1].Size != simpleAttachmentLimit+1 {
+		t.Fatalf("large attachment size = %d", attachments[1].Size)
+	}
+	if !hasLargeAttachments(attachments) {
+		t.Fatal("expected large attachment workflow")
 	}
 }

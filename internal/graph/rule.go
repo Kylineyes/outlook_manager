@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"io"
 	"net/http"
 	"net/url"
@@ -150,6 +151,7 @@ func CreateMessageRule(ctx context.Context, accessToken string, input MessageRul
 	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
 		return nil, fmt.Errorf("解析创建收件箱规则响应失败: %w", err)
 	}
+	audit.Log("mail.rule.create", map[string]any{"ruleId": rule.ID, "ruleName": rule.DisplayName})
 	return &rule, nil
 }
 
@@ -175,6 +177,7 @@ func DeleteMessageRule(ctx context.Context, accessToken, ruleID string) error {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 删除收件箱规则返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("mail.rule.delete", map[string]any{"ruleId": ruleID})
 	return nil
 }
 
@@ -213,6 +216,7 @@ func UpdateMessageRule(ctx context.Context, accessToken, ruleID string, input Me
 	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
 		return nil, fmt.Errorf("解析更新收件箱规则响应失败: %w", err)
 	}
+	audit.Log("mail.rule.update", map[string]any{"ruleId": rule.ID, "ruleName": rule.DisplayName})
 	return &rule, nil
 }
 
