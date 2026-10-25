@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/auth"
 	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
@@ -85,6 +86,8 @@ func run(args []string) error {
 		return runAccount(args[1:])
 	case "mail":
 		return runMail(args[1:])
+	case "audit":
+		return runAudit(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(os.Stdout, "outlookctl %s\n", version)
 		return nil
@@ -113,7 +116,59 @@ func printGroupUsage(group string) {
 	case "contacts":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl contacts <子命令> [options]")
 		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import")
+	case "audit":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list>")
 	}
+}
+
+// runAudit 处理本地审计日志子命令。
+func runAudit(args []string) error {
+	if len(args) > 0 && helpRequested(args[:1]) {
+		printGroupUsage("audit")
+		return nil
+	}
+	if len(args) == 0 {
+		printGroupUsage("audit")
+		return errors.New("audit 需要指定子命令: list")
+	}
+	switch args[0] {
+	case "list":
+		return runAuditList(args[1:])
+	default:
+		printGroupUsage("audit")
+		return fmt.Errorf("未知 audit 子命令: %s", args[0])
+	}
+}
+
+// runAuditList 查询本地审计日志。
+func runAuditList(args []string) error {
+	fs := flag.NewFlagSet("audit list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	limitFlag := fs.Int("limit", 50, "最多返回多少条记录")
+	actionFlag := fs.String("action", "", "按 action 前缀过滤")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	entries, err := audit.Entries(*limitFlag, *actionFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化审计日志失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	for _, entry := range entries {
+		timeText, _ := entry["time"].(string)
+		action, _ := entry["action"].(string)
+		data, _ := json.Marshal(entry)
+		fmt.Fprintf(os.Stdout, "%s | %s | %s\n", timeText, action, string(data))
+	}
+	return nil
 }
 
 // runAuth 处理 auth 子命令。
@@ -1858,6 +1913,10 @@ func runCalendar(args []string) error {
 		return runCalendarAttachmentAdd(args[1:])
 	case "attachment-get":
 		return runCalendarAttachmentGet(args[1:])
+	case "attachment-delete":
+		return runCalendarAttachmentDelete(args[1:])
+	case "attachment-replace":
+		return runCalendarAttachmentReplace(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
@@ -2743,6 +2802,17 @@ func runMailRuleCreate(args []string) error {
 	deleteFlag := fs.Bool("delete", false, "删除邮件")
 	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
 	categoryFlag := fs.String("category", "", "给邮件添加类别，多个用逗号分隔")
+	bodyContainsFlag := fs.String("body-contains", "", "正文包含关键字，多个用逗号分隔")
+	bodyOrSubjectFlag := fs.String("body-or-subject-contains", "", "正文或主题包含关键字，多个用逗号分隔")
+	hasAttachmentsFlag := fs.Bool("has-attachments", false, "匹配带附件的邮件")
+	ruleImportanceFlag := fs.String("importance", "", "匹配邮件重要性: low/normal/high")
+	senderContainsFlag := fs.String("sender-contains", "", "发件人包含关键字，多个用逗号分隔")
+	recipientContainsFlag := fs.String("recipient-contains", "", "收件人包含关键字，多个用逗号分隔")
+	copyFlag := fs.String("copy-to", "", "复制到文件夹名称或 ID")
+	forwardFlag := fs.String("forward-to", "", "转发到邮箱，多个用逗号分隔")
+	redirectFlag := fs.String("redirect-to", "", "重定向到邮箱，多个用逗号分隔")
+	markImportanceFlag := fs.String("mark-importance", "", "设置邮件重要性: low/normal/high")
+	permanentDeleteFlag := fs.Bool("permanent-delete", false, "永久删除邮件")
 	disabledFlag := fs.Bool("disabled", false, "创建为禁用状态")
 	applyNowFlag := fs.Bool("apply-now", false, "创建后立即回放规则")
 	confirmApplyFlag := fs.Bool("confirm-apply", false, "确认实际修改已有邮件；不填时只 dry-run")
@@ -2758,10 +2828,16 @@ func runMailRuleCreate(args []string) error {
 	from := splitAddresses(*fromFlag)
 	subjects := splitAddresses(*subjectFlag)
 	categories := splitAddresses(*categoryFlag)
-	if len(from) == 0 && len(subjects) == 0 {
+	bodyContains := splitAddresses(*bodyContainsFlag)
+	bodyOrSubjectContains := splitAddresses(*bodyOrSubjectFlag)
+	senderContains := splitAddresses(*senderContainsFlag)
+	recipientContains := splitAddresses(*recipientContainsFlag)
+	forwardTo := splitAddresses(*forwardFlag)
+	redirectTo := splitAddresses(*redirectFlag)
+	if len(from) == 0 && len(subjects) == 0 && len(bodyContains) == 0 && len(bodyOrSubjectContains) == 0 && !*hasAttachmentsFlag && strings.TrimSpace(*ruleImportanceFlag) == "" && len(senderContains) == 0 && len(recipientContains) == 0 {
 		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
 	}
-	if strings.TrimSpace(*moveFlag) == "" && len(categories) == 0 && !*markReadFlag && !*deleteFlag && !*stopFlag {
+	if strings.TrimSpace(*moveFlag) == "" && strings.TrimSpace(*copyFlag) == "" && len(categories) == 0 && len(forwardTo) == 0 && len(redirectTo) == 0 && !*markReadFlag && strings.TrimSpace(*markImportanceFlag) == "" && !*deleteFlag && !*permanentDeleteFlag && !*stopFlag {
 		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
 	}
 
@@ -2790,16 +2866,34 @@ func runMailRuleCreate(args []string) error {
 			return err
 		}
 	}
+	copyToFolder := strings.TrimSpace(*copyFlag)
+	if copyToFolder != "" {
+		copyToFolder, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, copyToFolder)
+		if err != nil {
+			return err
+		}
+	}
 	rule, err := graph.CreateMessageRule(ctx, loginResult.AccessToken, graph.MessageRuleInput{
-		DisplayName:         *nameFlag,
-		FromAddresses:       from,
-		SubjectContains:     subjects,
-		MoveToFolder:        moveToFolder,
-		MarkAsRead:          *markReadFlag,
-		Delete:              *deleteFlag,
-		AssignCategories:    categories,
-		StopProcessingRules: *stopFlag,
-		IsEnabled:           !*disabledFlag,
+		DisplayName:           *nameFlag,
+		FromAddresses:         from,
+		SubjectContains:       subjects,
+		MoveToFolder:          moveToFolder,
+		MarkAsRead:            *markReadFlag,
+		Delete:                *deleteFlag,
+		AssignCategories:      categories,
+		BodyContains:          bodyContains,
+		BodyOrSubjectContains: bodyOrSubjectContains,
+		HasAttachments:        *hasAttachmentsFlag,
+		Importance:            *ruleImportanceFlag,
+		SenderContains:        senderContains,
+		RecipientContains:     recipientContains,
+		CopyToFolder:          copyToFolder,
+		ForwardTo:             forwardTo,
+		RedirectTo:            redirectTo,
+		MarkImportance:        *markImportanceFlag,
+		PermanentDelete:       *permanentDeleteFlag,
+		StopProcessingRules:   *stopFlag,
+		IsEnabled:             !*disabledFlag,
 	})
 	if err != nil {
 		return err
@@ -2854,6 +2948,17 @@ func runMailRuleUpdate(args []string) error {
 	deleteFlag := fs.Bool("delete", false, "删除邮件")
 	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
 	categoryFlag := fs.String("category", "", "给邮件添加类别，多个用逗号分隔")
+	bodyContainsFlag := fs.String("body-contains", "", "正文包含关键字，多个用逗号分隔")
+	bodyOrSubjectFlag := fs.String("body-or-subject-contains", "", "正文或主题包含关键字，多个用逗号分隔")
+	hasAttachmentsFlag := fs.Bool("has-attachments", false, "匹配带附件的邮件")
+	ruleImportanceFlag := fs.String("importance", "", "匹配邮件重要性: low/normal/high")
+	senderContainsFlag := fs.String("sender-contains", "", "发件人包含关键字，多个用逗号分隔")
+	recipientContainsFlag := fs.String("recipient-contains", "", "收件人包含关键字，多个用逗号分隔")
+	copyFlag := fs.String("copy-to", "", "复制到文件夹名称或 ID")
+	forwardFlag := fs.String("forward-to", "", "转发到邮箱，多个用逗号分隔")
+	redirectFlag := fs.String("redirect-to", "", "重定向到邮箱，多个用逗号分隔")
+	markImportanceFlag := fs.String("mark-importance", "", "设置邮件重要性: low/normal/high")
+	permanentDeleteFlag := fs.Bool("permanent-delete", false, "永久删除邮件")
 	disabledFlag := fs.Bool("disabled", false, "更新为禁用状态")
 	if err := parseCommandFlags(fs, args); err != nil {
 		return err
@@ -2864,10 +2969,16 @@ func runMailRuleUpdate(args []string) error {
 	from := splitAddresses(*fromFlag)
 	subjects := splitAddresses(*subjectFlag)
 	categories := splitAddresses(*categoryFlag)
-	if len(from) == 0 && len(subjects) == 0 {
+	bodyContains := splitAddresses(*bodyContainsFlag)
+	bodyOrSubjectContains := splitAddresses(*bodyOrSubjectFlag)
+	senderContains := splitAddresses(*senderContainsFlag)
+	recipientContains := splitAddresses(*recipientContainsFlag)
+	forwardTo := splitAddresses(*forwardFlag)
+	redirectTo := splitAddresses(*redirectFlag)
+	if len(from) == 0 && len(subjects) == 0 && len(bodyContains) == 0 && len(bodyOrSubjectContains) == 0 && !*hasAttachmentsFlag && strings.TrimSpace(*ruleImportanceFlag) == "" && len(senderContains) == 0 && len(recipientContains) == 0 {
 		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
 	}
-	if strings.TrimSpace(*moveFlag) == "" && len(categories) == 0 && !*markReadFlag && !*deleteFlag && !*stopFlag {
+	if strings.TrimSpace(*moveFlag) == "" && strings.TrimSpace(*copyFlag) == "" && len(categories) == 0 && len(forwardTo) == 0 && len(redirectTo) == 0 && !*markReadFlag && strings.TrimSpace(*markImportanceFlag) == "" && !*deleteFlag && !*permanentDeleteFlag && !*stopFlag {
 		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -2895,16 +3006,34 @@ func runMailRuleUpdate(args []string) error {
 			return err
 		}
 	}
+	copyToFolder := strings.TrimSpace(*copyFlag)
+	if copyToFolder != "" {
+		copyToFolder, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, copyToFolder)
+		if err != nil {
+			return err
+		}
+	}
 	rule, err := graph.UpdateMessageRule(ctx, loginResult.AccessToken, *idFlag, graph.MessageRuleInput{
-		DisplayName:         *nameFlag,
-		FromAddresses:       from,
-		SubjectContains:     subjects,
-		MoveToFolder:        moveToFolder,
-		MarkAsRead:          *markReadFlag,
-		Delete:              *deleteFlag,
-		AssignCategories:    categories,
-		StopProcessingRules: *stopFlag,
-		IsEnabled:           !*disabledFlag,
+		DisplayName:           *nameFlag,
+		FromAddresses:         from,
+		SubjectContains:       subjects,
+		MoveToFolder:          moveToFolder,
+		MarkAsRead:            *markReadFlag,
+		Delete:                *deleteFlag,
+		AssignCategories:      categories,
+		BodyContains:          bodyContains,
+		BodyOrSubjectContains: bodyOrSubjectContains,
+		HasAttachments:        *hasAttachmentsFlag,
+		Importance:            *ruleImportanceFlag,
+		SenderContains:        senderContains,
+		RecipientContains:     recipientContains,
+		CopyToFolder:          copyToFolder,
+		ForwardTo:             forwardTo,
+		RedirectTo:            redirectTo,
+		MarkImportance:        *markImportanceFlag,
+		PermanentDelete:       *permanentDeleteFlag,
+		StopProcessingRules:   *stopFlag,
+		IsEnabled:             !*disabledFlag,
 	})
 	if err != nil {
 		return err
@@ -4153,6 +4282,94 @@ func runContactsImport(args []string) error {
 	return nil
 }
 
+// runCalendarAttachmentDelete 删除日历附件。
+func runCalendarAttachmentDelete(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "附件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-delete --id <事件ID> --attachment-id <附件ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已删除: %s\n", *attachmentIDFlag)
+	return nil
+}
+
+// runCalendarAttachmentReplace 替换日历附件。
+func runCalendarAttachmentReplace(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-replace", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "旧附件 ID")
+	fileFlag := fs.String("file", "", "新附件文件路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file <新附件>")
+	}
+	attachments, err := graph.LoadMailAttachments([]string{*fileFlag})
+	if err != nil {
+		return err
+	}
+	if len(attachments) == 0 {
+		return errors.New("新附件文件不能为空")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachment, err := graph.ReplaceCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag, attachments[0])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已替换: %s\n", attachment.Name)
+	fmt.Fprintf(os.Stdout, "新附件 ID: %s\n", attachment.ID)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -4162,6 +4379,7 @@ func printUsage() {
   outlookctl auth status                   验证本地 token 缓存和静默刷新
   outlookctl account list                  查看本地账号档案
   outlookctl account use <email>           切换默认账号
+  outlookctl audit list [--limit 50]       查询本地审计日志
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail search --query <关键字>       搜索邮件
   outlookctl mail send --to <邮箱> ...          发送邮件
@@ -4179,6 +4397,8 @@ func printUsage() {
   outlookctl calendar attachments --id <事件ID>  列出事件附件
   outlookctl calendar attachment-add --id <事件ID> --file <文件>  添加事件附件
   outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out <文件>  下载事件附件
+  outlookctl calendar attachment-delete --id <事件ID> --attachment-id <附件ID>  删除事件附件
+  outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file <文件>  替换事件附件
   outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
@@ -4202,8 +4422,6 @@ func printUsage() {
   outlookctl contacts copy --id <联系人ID> --folder <文件夹>  复制联系人
   outlookctl contacts export --out <CSV文件>  导出联系人
   outlookctl contacts import --file <CSV文件> [--confirm]  导入联系人
-  outlookctl contacts export --out <CSV文件>  导出联系人
-  outlookctl contacts import --file <CSV文件> [--confirm]  导入联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件
@@ -4211,8 +4429,6 @@ func printUsage() {
   outlookctl mail drafts                     列出草稿
   outlookctl mail draft-send <draft-id>      发送草稿
   outlookctl mail draft-update --id <草稿ID>  更新草稿
-  outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>  删除草稿附件
-  outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file <文件>  替换草稿附件
   outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>  删除草稿附件
   outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file <文件>  替换草稿附件
   outlookctl mail folder-create --name <名称>  创建文件夹

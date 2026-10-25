@@ -24,15 +24,26 @@ type MessageRule struct {
 
 // MessageRuleInput 是创建收件箱规则的输入。
 type MessageRuleInput struct {
-	DisplayName         string
-	FromAddresses       []string
-	SubjectContains     []string
-	MoveToFolder        string
-	AssignCategories    []string
-	MarkAsRead          bool
-	Delete              bool
-	StopProcessingRules bool
-	IsEnabled           bool
+	DisplayName           string
+	FromAddresses         []string
+	SubjectContains       []string
+	BodyContains          []string
+	BodyOrSubjectContains []string
+	HasAttachments        bool
+	Importance            string
+	SenderContains        []string
+	RecipientContains     []string
+	MoveToFolder          string
+	CopyToFolder          string
+	AssignCategories      []string
+	ForwardTo             []string
+	RedirectTo            []string
+	MarkAsRead            bool
+	MarkImportance        string
+	Delete                bool
+	PermanentDelete       bool
+	StopProcessingRules   bool
+	IsEnabled             bool
 }
 
 // buildMessageRulePayload 构造 Graph 收件箱规则请求体。
@@ -60,6 +71,30 @@ func buildMessageRulePayload(input MessageRuleInput) (map[string]any, error) {
 	if len(input.SubjectContains) > 0 {
 		conditions["subjectContains"] = input.SubjectContains
 	}
+	if len(input.BodyContains) > 0 {
+		conditions["bodyContains"] = input.BodyContains
+	}
+	if len(input.BodyOrSubjectContains) > 0 {
+		conditions["bodyOrSubjectContains"] = input.BodyOrSubjectContains
+	}
+	if input.HasAttachments {
+		conditions["hasAttachments"] = true
+	}
+	if strings.TrimSpace(input.Importance) != "" {
+		importance := strings.ToLower(strings.TrimSpace(input.Importance))
+		switch importance {
+		case "low", "normal", "high":
+			conditions["importance"] = importance
+		default:
+			return nil, fmt.Errorf("不支持的规则重要性: %s", input.Importance)
+		}
+	}
+	if len(input.SenderContains) > 0 {
+		conditions["senderContains"] = input.SenderContains
+	}
+	if len(input.RecipientContains) > 0 {
+		conditions["recipientContains"] = input.RecipientContains
+	}
 	if len(conditions) == 0 {
 		return nil, fmt.Errorf("至少需要一个规则条件")
 	}
@@ -68,14 +103,43 @@ func buildMessageRulePayload(input MessageRuleInput) (map[string]any, error) {
 	if strings.TrimSpace(input.MoveToFolder) != "" {
 		actions["moveToFolder"] = strings.TrimSpace(input.MoveToFolder)
 	}
+	if strings.TrimSpace(input.CopyToFolder) != "" {
+		actions["copyToFolder"] = strings.TrimSpace(input.CopyToFolder)
+	}
 	if len(input.AssignCategories) > 0 {
 		actions["assignCategories"] = input.AssignCategories
+	}
+	if len(input.ForwardTo) > 0 {
+		recipients, err := buildRecipients(input.ForwardTo, "规则转发收件人")
+		if err != nil {
+			return nil, err
+		}
+		actions["forwardTo"] = recipients
+	}
+	if len(input.RedirectTo) > 0 {
+		recipients, err := buildRecipients(input.RedirectTo, "规则重定向收件人")
+		if err != nil {
+			return nil, err
+		}
+		actions["redirectTo"] = recipients
 	}
 	if input.MarkAsRead {
 		actions["markAsRead"] = true
 	}
+	if strings.TrimSpace(input.MarkImportance) != "" {
+		importance := strings.ToLower(strings.TrimSpace(input.MarkImportance))
+		switch importance {
+		case "low", "normal", "high":
+			actions["markImportance"] = importance
+		default:
+			return nil, fmt.Errorf("不支持的规则优先级: %s", input.MarkImportance)
+		}
+	}
 	if input.Delete {
 		actions["delete"] = true
+	}
+	if input.PermanentDelete {
+		actions["permanentDelete"] = true
 	}
 	if input.StopProcessingRules {
 		actions["stopProcessingRules"] = true

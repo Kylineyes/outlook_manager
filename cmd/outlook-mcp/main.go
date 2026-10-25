@@ -20,6 +20,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/auth"
 	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
@@ -30,7 +31,7 @@ import (
 func newTool(name, description string) *mcp.Tool {
 	readOnly := isReadOnlyTool(name)
 	destructive := isDestructiveTool(name)
-	openWorld := name != "account_list"
+	openWorld := name != "account_list" && name != "audit_list"
 	return &mcp.Tool{
 		Name:        name,
 		Description: description,
@@ -45,7 +46,7 @@ func newTool(name, description string) *mcp.Tool {
 
 func isReadOnlyTool(name string) bool {
 	switch name {
-	case "account_list", "mail_list", "mail_read", "mail_search", "mail_folders_list",
+	case "account_list", "audit_list", "mail_list", "mail_read", "mail_search", "mail_folders_list",
 		"mail_attachments_list", "mail_message_categories", "mail_rules_list",
 		"mail_master_categories_list", "calendar_list", "calendar_calendars_list",
 		"calendar_attachments_list", "calendar_attachment_get", "contacts_list",
@@ -61,7 +62,7 @@ func isDestructiveTool(name string) bool {
 	case "mail_delete", "mail_permanent_delete", "mail_folder_delete",
 		"mail_rule_delete", "mail_rule_apply", "mail_master_category_delete",
 		"mail_draft_attachment_delete", "mail_draft_attachment_replace",
-		"calendar_delete", "calendar_cancel", "contacts_delete",
+		"calendar_delete", "calendar_cancel", "calendar_attachment_delete", "calendar_attachment_replace", "contacts_delete",
 		"contacts_permanent_delete", "contacts_folder_delete":
 		return true
 	default:
@@ -401,36 +402,58 @@ type mailRulesArgs struct {
 
 // mailRuleCreateArgs 是 mail_rule_create tool 的输入参数。
 type mailRuleCreateArgs struct {
-	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	Name             string   `json:"name" jsonschema:"规则名称"`
-	From             []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
-	SubjectContains  []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
-	MoveTo           string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
-	MarkAsRead       bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
-	Delete           bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
-	Stop             bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
-	Disabled         bool     `json:"disabled,omitempty" jsonschema:"创建为禁用状态"`
-	ApplyNow         bool     `json:"applyNow,omitempty" jsonschema:"创建后立即回放规则"`
-	ConfirmApply     bool     `json:"confirmApply,omitempty" jsonschema:"确认实际修改已有邮件；不填时只 dry-run"`
-	ApplyFolder      string   `json:"applyFolder,omitempty" jsonschema:"回放规则的目标文件夹；不填时使用收件箱"`
-	ApplyMax         int      `json:"applyMax,omitempty" jsonschema:"回放时最多扫描多少封邮件，默认 500"`
-	AssignCategories []string `json:"assignCategories,omitempty" jsonschema:"给邮件添加的类别列表"`
-	ApplyFolders     []string `json:"applyFolders,omitempty" jsonschema:"回放规则的目标文件夹列表"`
+	Account               string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Name                  string   `json:"name" jsonschema:"规则名称"`
+	From                  []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
+	SubjectContains       []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
+	MoveTo                string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
+	MarkAsRead            bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
+	Delete                bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
+	Stop                  bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
+	Disabled              bool     `json:"disabled,omitempty" jsonschema:"创建为禁用状态"`
+	ApplyNow              bool     `json:"applyNow,omitempty" jsonschema:"创建后立即回放规则"`
+	ConfirmApply          bool     `json:"confirmApply,omitempty" jsonschema:"确认实际修改已有邮件；不填时只 dry-run"`
+	ApplyFolder           string   `json:"applyFolder,omitempty" jsonschema:"回放规则的目标文件夹；不填时使用收件箱"`
+	ApplyMax              int      `json:"applyMax,omitempty" jsonschema:"回放时最多扫描多少封邮件，默认 500"`
+	AssignCategories      []string `json:"assignCategories,omitempty" jsonschema:"给邮件添加的类别列表"`
+	ApplyFolders          []string `json:"applyFolders,omitempty" jsonschema:"回放规则的目标文件夹列表"`
+	BodyContains          []string `json:"bodyContains,omitempty" jsonschema:"正文包含关键字列表"`
+	BodyOrSubjectContains []string `json:"bodyOrSubjectContains,omitempty" jsonschema:"正文或主题包含关键字列表"`
+	HasAttachments        bool     `json:"hasAttachments,omitempty" jsonschema:"匹配带附件的邮件"`
+	Importance            string   `json:"importance,omitempty" jsonschema:"匹配邮件重要性: low/normal/high"`
+	SenderContains        []string `json:"senderContains,omitempty" jsonschema:"发件人包含关键字列表"`
+	RecipientContains     []string `json:"recipientContains,omitempty" jsonschema:"收件人包含关键字列表"`
+	CopyTo                string   `json:"copyTo,omitempty" jsonschema:"复制到文件夹名称或 ID"`
+	ForwardTo             []string `json:"forwardTo,omitempty" jsonschema:"转发到邮箱列表"`
+	RedirectTo            []string `json:"redirectTo,omitempty" jsonschema:"重定向到邮箱列表"`
+	MarkImportance        string   `json:"markImportance,omitempty" jsonschema:"设置邮件重要性: low/normal/high"`
+	PermanentDelete       bool     `json:"permanentDelete,omitempty" jsonschema:"永久删除邮件"`
 }
 
 // mailRuleUpdateArgs 是 mail_rule_update tool 的输入参数。
 type mailRuleUpdateArgs struct {
-	Account          string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
-	ID               string   `json:"id" jsonschema:"规则 ID"`
-	Name             string   `json:"name" jsonschema:"规则名称"`
-	From             []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
-	SubjectContains  []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
-	MoveTo           string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
-	MarkAsRead       bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
-	Delete           bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
-	Stop             bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
-	Disabled         bool     `json:"disabled,omitempty" jsonschema:"更新为禁用状态"`
-	AssignCategories []string `json:"assignCategories,omitempty" jsonschema:"给邮件添加的类别列表"`
+	Account               string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	ID                    string   `json:"id" jsonschema:"规则 ID"`
+	Name                  string   `json:"name" jsonschema:"规则名称"`
+	From                  []string `json:"from,omitempty" jsonschema:"发件人邮箱列表"`
+	SubjectContains       []string `json:"subjectContains,omitempty" jsonschema:"主题包含关键字列表"`
+	MoveTo                string   `json:"moveTo,omitempty" jsonschema:"移动到文件夹名称或 ID"`
+	MarkAsRead            bool     `json:"markAsRead,omitempty" jsonschema:"标记为已读"`
+	Delete                bool     `json:"delete,omitempty" jsonschema:"删除邮件"`
+	Stop                  bool     `json:"stop,omitempty" jsonschema:"停止处理后续规则"`
+	Disabled              bool     `json:"disabled,omitempty" jsonschema:"更新为禁用状态"`
+	AssignCategories      []string `json:"assignCategories,omitempty" jsonschema:"给邮件添加的类别列表"`
+	BodyContains          []string `json:"bodyContains,omitempty" jsonschema:"正文包含关键字列表"`
+	BodyOrSubjectContains []string `json:"bodyOrSubjectContains,omitempty" jsonschema:"正文或主题包含关键字列表"`
+	HasAttachments        bool     `json:"hasAttachments,omitempty" jsonschema:"匹配带附件的邮件"`
+	Importance            string   `json:"importance,omitempty" jsonschema:"匹配邮件重要性: low/normal/high"`
+	SenderContains        []string `json:"senderContains,omitempty" jsonschema:"发件人包含关键字列表"`
+	RecipientContains     []string `json:"recipientContains,omitempty" jsonschema:"收件人包含关键字列表"`
+	CopyTo                string   `json:"copyTo,omitempty" jsonschema:"复制到文件夹名称或 ID"`
+	ForwardTo             []string `json:"forwardTo,omitempty" jsonschema:"转发到邮箱列表"`
+	RedirectTo            []string `json:"redirectTo,omitempty" jsonschema:"重定向到邮箱列表"`
+	MarkImportance        string   `json:"markImportance,omitempty" jsonschema:"设置邮件重要性: low/normal/high"`
+	PermanentDelete       bool     `json:"permanentDelete,omitempty" jsonschema:"永久删除邮件"`
 }
 
 // mailRuleDeleteArgs 是 mail_rule_delete tool 的输入参数。
@@ -617,6 +640,27 @@ type contactsImportArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// calendarAttachmentDeleteArgs 是 calendar_attachment_delete tool 的输入参数。
+type calendarAttachmentDeleteArgs struct {
+	ID           string `json:"id" jsonschema:"事件 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"附件 ID"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarAttachmentReplaceArgs 是 calendar_attachment_replace tool 的输入参数。
+type calendarAttachmentReplaceArgs struct {
+	ID           string `json:"id" jsonschema:"事件 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"旧附件 ID"`
+	File         string `json:"file" jsonschema:"新附件文件路径"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// auditListArgs 是 audit_list tool 的输入参数。
+type auditListArgs struct {
+	Limit  int    `json:"limit,omitempty" jsonschema:"最多返回多少条记录，默认 50"`
+	Action string `json:"action,omitempty" jsonschema:"按 action 前缀过滤"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -773,6 +817,12 @@ func main() {
 	mcp.AddTool(server, newTool("contacts_export", "导出联系人到 CSV"), contactsExportHandler)
 
 	mcp.AddTool(server, newTool("contacts_import", "从 CSV 导入联系人"), contactsImportHandler)
+
+	mcp.AddTool(server, newTool("calendar_attachment_delete", "删除日历事件附件"), calendarAttachmentDeleteHandler)
+
+	mcp.AddTool(server, newTool("calendar_attachment_replace", "替换日历事件附件"), calendarAttachmentReplaceHandler)
+
+	mcp.AddTool(server, newTool("audit_list", "查询本地操作审计日志"), auditListHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -2347,10 +2397,10 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 	if strings.TrimSpace(args.Name) == "" {
 		return nil, nil, fmt.Errorf("规则名称不能为空")
 	}
-	if len(args.From) == 0 && len(args.SubjectContains) == 0 {
+	if len(args.From) == 0 && len(args.SubjectContains) == 0 && len(args.BodyContains) == 0 && len(args.BodyOrSubjectContains) == 0 && !args.HasAttachments && strings.TrimSpace(args.Importance) == "" && len(args.SenderContains) == 0 && len(args.RecipientContains) == 0 {
 		return nil, nil, fmt.Errorf("至少需要一个规则条件")
 	}
-	if strings.TrimSpace(args.MoveTo) == "" && len(args.AssignCategories) == 0 && !args.MarkAsRead && !args.Delete && !args.Stop {
+	if strings.TrimSpace(args.MoveTo) == "" && strings.TrimSpace(args.CopyTo) == "" && len(args.AssignCategories) == 0 && len(args.ForwardTo) == 0 && len(args.RedirectTo) == 0 && !args.MarkAsRead && strings.TrimSpace(args.MarkImportance) == "" && !args.Delete && !args.PermanentDelete && !args.Stop {
 		return nil, nil, fmt.Errorf("至少需要一个规则动作")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -2378,16 +2428,34 @@ func mailRuleCreateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 			return nil, nil, err
 		}
 	}
+	copyTo := strings.TrimSpace(args.CopyTo)
+	if copyTo != "" {
+		copyTo, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, copyTo)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	rule, err := graph.CreateMessageRule(ctx, loginResult.AccessToken, graph.MessageRuleInput{
-		DisplayName:         args.Name,
-		FromAddresses:       args.From,
-		SubjectContains:     args.SubjectContains,
-		MoveToFolder:        moveTo,
-		AssignCategories:    args.AssignCategories,
-		MarkAsRead:          args.MarkAsRead,
-		Delete:              args.Delete,
-		StopProcessingRules: args.Stop,
-		IsEnabled:           !args.Disabled,
+		DisplayName:           args.Name,
+		FromAddresses:         args.From,
+		SubjectContains:       args.SubjectContains,
+		MoveToFolder:          moveTo,
+		AssignCategories:      args.AssignCategories,
+		BodyContains:          args.BodyContains,
+		BodyOrSubjectContains: args.BodyOrSubjectContains,
+		HasAttachments:        args.HasAttachments,
+		Importance:            args.Importance,
+		SenderContains:        args.SenderContains,
+		RecipientContains:     args.RecipientContains,
+		CopyToFolder:          copyTo,
+		ForwardTo:             args.ForwardTo,
+		RedirectTo:            args.RedirectTo,
+		MarkImportance:        args.MarkImportance,
+		PermanentDelete:       args.PermanentDelete,
+		MarkAsRead:            args.MarkAsRead,
+		Delete:                args.Delete,
+		StopProcessingRules:   args.Stop,
+		IsEnabled:             !args.Disabled,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -2439,10 +2507,10 @@ func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.Name) == "" {
 		return nil, nil, fmt.Errorf("规则 ID 和名称不能为空")
 	}
-	if len(args.From) == 0 && len(args.SubjectContains) == 0 {
+	if len(args.From) == 0 && len(args.SubjectContains) == 0 && len(args.BodyContains) == 0 && len(args.BodyOrSubjectContains) == 0 && !args.HasAttachments && strings.TrimSpace(args.Importance) == "" && len(args.SenderContains) == 0 && len(args.RecipientContains) == 0 {
 		return nil, nil, fmt.Errorf("至少需要一个规则条件")
 	}
-	if strings.TrimSpace(args.MoveTo) == "" && len(args.AssignCategories) == 0 && !args.MarkAsRead && !args.Delete && !args.Stop {
+	if strings.TrimSpace(args.MoveTo) == "" && strings.TrimSpace(args.CopyTo) == "" && len(args.AssignCategories) == 0 && len(args.ForwardTo) == 0 && len(args.RedirectTo) == 0 && !args.MarkAsRead && strings.TrimSpace(args.MarkImportance) == "" && !args.Delete && !args.PermanentDelete && !args.Stop {
 		return nil, nil, fmt.Errorf("至少需要一个规则动作")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -2470,16 +2538,34 @@ func mailRuleUpdateHandler(ctx context.Context, req *mcp.CallToolRequest, args m
 			return nil, nil, err
 		}
 	}
+	copyTo := strings.TrimSpace(args.CopyTo)
+	if copyTo != "" {
+		copyTo, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, copyTo)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	rule, err := graph.UpdateMessageRule(ctx, loginResult.AccessToken, args.ID, graph.MessageRuleInput{
-		DisplayName:         args.Name,
-		FromAddresses:       args.From,
-		SubjectContains:     args.SubjectContains,
-		MoveToFolder:        moveTo,
-		AssignCategories:    args.AssignCategories,
-		MarkAsRead:          args.MarkAsRead,
-		Delete:              args.Delete,
-		StopProcessingRules: args.Stop,
-		IsEnabled:           !args.Disabled,
+		DisplayName:           args.Name,
+		FromAddresses:         args.From,
+		SubjectContains:       args.SubjectContains,
+		MoveToFolder:          moveTo,
+		AssignCategories:      args.AssignCategories,
+		BodyContains:          args.BodyContains,
+		BodyOrSubjectContains: args.BodyOrSubjectContains,
+		HasAttachments:        args.HasAttachments,
+		Importance:            args.Importance,
+		SenderContains:        args.SenderContains,
+		RecipientContains:     args.RecipientContains,
+		CopyToFolder:          copyTo,
+		ForwardTo:             args.ForwardTo,
+		RedirectTo:            args.RedirectTo,
+		MarkImportance:        args.MarkImportance,
+		PermanentDelete:       args.PermanentDelete,
+		MarkAsRead:            args.MarkAsRead,
+		Delete:                args.Delete,
+		StopProcessingRules:   args.Stop,
+		IsEnabled:             !args.Disabled,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -3472,6 +3558,94 @@ func contactsImportHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 		"failed":   failureCount,
 		"failures": failures,
 		"file":     args.File,
+	})
+}
+
+// calendarAttachmentDeleteHandler 删除日历事件附件。
+func calendarAttachmentDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.AttachmentID) == "" {
+		return nil, nil, fmt.Errorf("事件 ID 和附件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"eventId":      args.ID,
+		"attachmentId": args.AttachmentID,
+	})
+}
+
+// calendarAttachmentReplaceHandler 替换日历事件附件。
+func calendarAttachmentReplaceHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentReplaceArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.AttachmentID) == "" || strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("事件 ID、旧附件 ID 和新附件文件不能为空")
+	}
+	attachments, err := graph.LoadMailAttachments([]string{args.File})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(attachments) == 0 {
+		return nil, nil, fmt.Errorf("新附件文件不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachment, err := graph.ReplaceCalendarEventAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID, attachments[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":    true,
+		"account":    selected.Username,
+		"eventId":    args.ID,
+		"attachment": attachment,
+	})
+}
+
+// auditListHandler 查询本地审计日志。
+func auditListHandler(ctx context.Context, req *mcp.CallToolRequest, args auditListArgs) (*mcp.CallToolResult, any, error) {
+	entries, err := audit.Entries(args.Limit, args.Action)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"entries": entries,
+		"count":   len(entries),
 	})
 }
 

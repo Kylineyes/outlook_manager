@@ -521,6 +521,7 @@ func AddCalendarEventAttachment(ctx context.Context, accessToken, eventID string
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("解析 Graph 添加日历附件响应失败: %w", err)
 	}
+	audit.Log("calendar.attachment.add", map[string]any{"eventId": eventID, "attachmentId": result.ID, "size": result.Size})
 	return &result, nil
 }
 
@@ -677,4 +678,49 @@ func ForwardCalendarEvent(ctx context.Context, accessToken, eventID, comment str
 	}
 	audit.Log("calendar.forward", map[string]any{"eventId": eventID, "recipientCount": len(recipients)})
 	return nil
+}
+
+// DeleteCalendarEventAttachment 删除日历事件附件。
+func DeleteCalendarEventAttachment(ctx context.Context, accessToken, eventID, attachmentID string) error {
+	eventID = strings.TrimSpace(eventID)
+	attachmentID = strings.TrimSpace(attachmentID)
+	if eventID == "" || attachmentID == "" {
+		return fmt.Errorf("事件 ID 和附件 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/attachments/" + url.PathEscape(attachmentID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建删除日历附件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 删除日历附件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 删除日历附件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	audit.Log("calendar.attachment.delete", map[string]any{"eventId": eventID, "attachmentId": attachmentID})
+	return nil
+}
+
+// ReplaceCalendarEventAttachment 替换日历事件附件：先添加新附件，再删除旧附件。
+func ReplaceCalendarEventAttachment(ctx context.Context, accessToken, eventID, oldAttachmentID string, attachment MailAttachmentInput) (*CalendarEventAttachment, error) {
+	eventID = strings.TrimSpace(eventID)
+	oldAttachmentID = strings.TrimSpace(oldAttachmentID)
+	if eventID == "" || oldAttachmentID == "" {
+		return nil, fmt.Errorf("事件 ID 和旧附件 ID 不能为空")
+	}
+	newAttachment, err := AddCalendarEventAttachment(ctx, accessToken, eventID, attachment)
+	if err != nil {
+		return nil, err
+	}
+	if err := DeleteCalendarEventAttachment(ctx, accessToken, eventID, oldAttachmentID); err != nil {
+		return nil, fmt.Errorf("新附件已添加，但删除旧附件失败: %w", err)
+	}
+	audit.Log("calendar.attachment.replace", map[string]any{"eventId": eventID, "oldAttachmentId": oldAttachmentID, "newAttachmentId": newAttachment.ID})
+	return newAttachment, nil
 }

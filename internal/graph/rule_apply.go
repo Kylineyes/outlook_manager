@@ -38,6 +38,8 @@ type messageRuleConditions struct {
 	BodyOrSubjectContains []string
 	HasAttachments        bool
 	Importance            string
+	SenderContains        []string
+	RecipientContains     []string
 }
 
 type messageRuleActions struct {
@@ -176,6 +178,10 @@ func parseMessageRuleConditions(source map[string]any) (*messageRuleConditions, 
 			}
 		case "importance":
 			conditions.Importance = strings.TrimSpace(toStringValue(value))
+		case "senderContains":
+			conditions.SenderContains = parseRuleStringList(value)
+		case "recipientContains":
+			conditions.RecipientContains = parseRuleStringList(value)
 		default:
 			if !isEmptyRuleValue(value) {
 				return nil, fmt.Errorf("规则包含暂不支持的条件: %s", key)
@@ -275,6 +281,24 @@ func matchesMessageRule(conditions *messageRuleConditions, message Message, body
 	}
 	if conditions.Importance != "" && !strings.EqualFold(conditions.Importance, message.Importance) {
 		return false
+	}
+	if len(conditions.SenderContains) > 0 {
+		sender := message.From.EmailAddress.Name + " " + message.From.EmailAddress.Address
+		if !containsAnyKeyword(sender, conditions.SenderContains) {
+			return false
+		}
+	}
+	if len(conditions.RecipientContains) > 0 {
+		recipients := make([]string, 0)
+		for _, recipient := range message.ToRecipients {
+			recipients = append(recipients, recipient.EmailAddress.Name+" "+recipient.EmailAddress.Address)
+		}
+		for _, recipient := range message.CcRecipients {
+			recipients = append(recipients, recipient.EmailAddress.Name+" "+recipient.EmailAddress.Address)
+		}
+		if !containsAnyKeyword(strings.Join(recipients, "\n"), conditions.RecipientContains) {
+			return false
+		}
 	}
 	return true
 }
