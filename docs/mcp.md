@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 71 个 MCP tools 的分组说明
+- 77 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 71 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 77 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -176,6 +176,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_read` | 读取单封邮件详情 | `id`、`account` |
 | `mail_search` | 关键字搜索邮件 | `query`、`folder`、`top`、`account` |
 | `mail_folders_list` | 列出邮件文件夹 | `top`、`account` |
+| `mail_folder_tree` | 树形列出邮件文件夹 | `top`、`account` |
 | `mail_attachments_list` | 列出邮件附件 | `id`、`account` |
 | `mail_attachment_save` | 下载邮件附件到本地 | `id`、`attachmentId`、`outputPath`、`account` |
 | `mail_message_categories` | 列出单封邮件的类别 | `id`、`account` |
@@ -194,6 +195,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_draft_update` | 更新草稿 | `id`、`to`、`subject`、`body`、`attachments`、`importance`、回执参数、`account` |
 | `mail_draft_attachment_delete` | 删除草稿附件 | `id`、`attachmentId`、`account` |
 | `mail_draft_attachment_replace` | 替换草稿附件 | `id`、`attachmentId`、`file`、`account` |
+| `mail_draft_attachment_bulk_delete` | 批量删除草稿附件 | `id`、`attachmentIds`、`confirm`、`account` |
 | `mail_draft_send` | 发送草稿 | `id`、`account` |
 | `mail_drafts_list` | 列出草稿 | `top`、`account` |
 | `mail_mark_read` | 标记已读 | `id`、`account` |
@@ -203,6 +205,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_set_importance` | 设置重要性 | `id`、`level`、`account` |
 | `mail_move` | 移动到文件夹 | `id`、`folder`、`account` |
 | `mail_delete` | 移动到已删除邮件 | `id`、`account` |
+| `mail_bulk_move` | 批量移动邮件，默认 dry-run | `ids`、`folder`、`confirm`、`account` |
+| `mail_bulk_delete` | 批量删除邮件，默认 dry-run | `ids`、`confirm`、`account` |
 | `mail_permanent_delete` | 永久删除邮件 | `id`、`account` |
 | `mail_category_add` | 给邮件添加类别 | `id`、`category`、`account` |
 | `mail_category_remove` | 移除邮件类别 | `id`、`category`、`account` |
@@ -236,6 +240,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `calendar_attachment_get` | 下载事件附件 | `id`、`attachmentId`、`account` |
 | `calendar_attachment_delete` | 删除事件附件 | `id`、`attachmentId`、`account` |
 | `calendar_attachment_replace` | 替换事件附件 | `id`、`attachmentId`、`file`、`account` |
+| `calendar_attachment_bulk_delete` | 批量删除事件附件 | `id`、`attachmentIds`、`confirm`、`account` |
 
 说明：`calendar_respond` 只能用于别人发来的会议邀请；如果当前账号是会议组织者，Graph 会拒绝响应。`calendar_cancel` 通常也需要当前账号是会议组织者。
 
@@ -259,8 +264,9 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `contacts_folder_delete` | 删除联系人文件夹 | `id`、`account` |
 | `contacts_photo_get` | 读取联系人照片 | `id`、`account` |
 | `contacts_photo_set` | 设置联系人照片 | `id`、`file`、`account` |
-| `contacts_export` | 导出联系人到 CSV | `file`、`folder`、`max`、`account` |
-| `contacts_import` | 从 CSV 导入联系人 | `file`、`folder`、`max`、`confirm`、`account` |
+| `contacts_bulk_delete` | 批量删除联系人，默认 dry-run | `ids`、`confirm`、`account` |
+| `contacts_export` | 导出联系人到 CSV 或 vCard | `file`、`format`、`folder`、`max`、`account` |
+| `contacts_import` | 从 CSV 或 vCard 导入联系人 | `file`、`format`、`folder`、`max`、`confirm`、`account` |
 
 ## 7. 常用示例
 
@@ -603,6 +609,61 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
   }
 }
 ```
+### 7.18 邮件文件夹树与批量操作
+
+```json
+{
+  "tool": "mail_folder_tree",
+  "arguments": {
+    "top": 200
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_bulk_move",
+  "arguments": {
+    "ids": ["<id1>", "<id2>"],
+    "folder": "归档",
+    "confirm": true
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_attachment_bulk_delete",
+  "arguments": {
+    "id": "<event-id>",
+    "attachmentIds": ["<att1>", "<att2>"],
+    "confirm": true
+  }
+}
+```
+
+### 7.19 联系人 vCard 导入导出
+
+```json
+{
+  "tool": "contacts_export",
+  "arguments": {
+    "file": "C:\\temp\\contacts.vcf",
+    "format": "vcf"
+  }
+}
+```
+
+```json
+{
+  "tool": "contacts_import",
+  "arguments": {
+    "file": "C:\\temp\\contacts.vcf",
+    "format": "vcf",
+    "confirm": true
+  }
+}
+```
 ## 8. MCP tool annotations
 
 所有 MCP tools 都带有 annotations：
@@ -611,6 +672,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 - `destructiveHint`：是否可能执行删除、永久删除、规则回放等破坏性操作
 - `openWorldHint`：是否访问 Microsoft Graph 外部环境
 - `idempotentHint`：只读工具标记为幂等
+- 所有 tools 都提供通用 `outputSchema`，并在 `structuredContent.result` 中返回结构化结果
 
 客户端可据此决定是否要求用户确认。
 ## 9. 返回格式

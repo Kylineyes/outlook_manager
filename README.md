@@ -22,6 +22,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 设置重要性
 - 邮件文件夹列表
 - 邮件文件夹创建、重命名、删除
+- 邮件文件夹树形展示
 - 邮件移动
 - 邮件删除（移动到已删除邮件）
 - 邮件永久删除
@@ -63,8 +64,11 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 草稿创建、列表、发送
 - 草稿更新
 - 草稿附件删除/替换
-- 联系人批量导入导出（CSV）
+- 批量邮件、联系人、附件删除/移动操作
+- 联系人批量导入导出（CSV / vCard）
 - MCP tool annotations（只读/破坏性提示）
+- MCP 结构化输出（outputSchema / structuredContent）
+- CLI doctor 环境与账号诊断
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
 ## 环境要求
@@ -168,6 +172,8 @@ outlookctl contacts move --id <联系人ID> --folder "客户"
 outlookctl contacts copy --id <联系人ID> --folder "客户" --name "副本名称"
 outlookctl contacts export --out C:\temp\contacts.csv
 outlookctl contacts import --file C:\temp\contacts.csv --confirm
+outlookctl contacts export --out C:\temp\contacts.vcf --format vcf
+outlookctl contacts import --file C:\temp\contacts.vcf --format vcf --confirm
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl contacts permanent-delete --id <联系人ID>
@@ -194,7 +200,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 71 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 77 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -231,6 +237,10 @@ docs/mcp.md
 
 ```text
 outlookctl audit list --limit 20
+outlookctl doctor
+outlookctl mail folder-tree
+outlookctl mail bulk-delete --ids <id1,id2> [--confirm]
+outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]
 outlookctl audit list --action mail. --json
 ```
 
