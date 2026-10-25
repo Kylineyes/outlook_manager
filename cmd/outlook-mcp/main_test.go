@@ -22,3 +22,17 @@ func TestToolAnnotations(t *testing.T) {
 		t.Fatal("account_list should not be open-world")
 	}
 }
+
+func TestStructuredOutput(t *testing.T) {
+	result, _, err := jsonResult(map[string]any{"value": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.StructuredContent == nil {
+		t.Fatal("structured content is nil")
+	}
+	tool := newTool("mail_list", "列出邮件")
+	if tool.OutputSchema == nil {
+		t.Fatal("output schema is nil")
+	}
+}

@@ -25,6 +25,7 @@ import (
 	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
 	"github.com/Kylineyes/outlook-manager/internal/store"
+	"github.com/Kylineyes/outlook-manager/internal/vcard"
 )
 
 // newTool 创建带 MCP annotations 的 tool 定义。
@@ -34,7 +35,15 @@ func newTool(name, description string) *mcp.Tool {
 	openWorld := name != "account_list" && name != "audit_list"
 	return &mcp.Tool{
 		Name:        name,
+		Title:       description,
 		Description: description,
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"result": map[string]any{},
+			},
+			"required": []string{"result"},
+		},
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    readOnly,
 			DestructiveHint: &destructive,
@@ -46,7 +55,7 @@ func newTool(name, description string) *mcp.Tool {
 
 func isReadOnlyTool(name string) bool {
 	switch name {
-	case "account_list", "audit_list", "mail_list", "mail_read", "mail_search", "mail_folders_list",
+	case "account_list", "audit_list", "mail_folder_tree", "mail_list", "mail_read", "mail_search", "mail_folders_list",
 		"mail_attachments_list", "mail_message_categories", "mail_rules_list",
 		"mail_master_categories_list", "calendar_list", "calendar_calendars_list",
 		"calendar_attachments_list", "calendar_attachment_get", "contacts_list",
@@ -59,10 +68,10 @@ func isReadOnlyTool(name string) bool {
 
 func isDestructiveTool(name string) bool {
 	switch name {
-	case "mail_delete", "mail_permanent_delete", "mail_folder_delete",
+	case "mail_delete", "mail_bulk_delete", "mail_permanent_delete", "mail_folder_delete",
 		"mail_rule_delete", "mail_rule_apply", "mail_master_category_delete",
 		"mail_draft_attachment_delete", "mail_draft_attachment_replace",
-		"calendar_delete", "calendar_cancel", "calendar_attachment_delete", "calendar_attachment_replace", "contacts_delete",
+		"calendar_delete", "calendar_cancel", "calendar_attachment_delete", "calendar_attachment_replace", "calendar_attachment_bulk_delete", "contacts_delete", "contacts_bulk_delete", "mail_draft_attachment_bulk_delete",
 		"contacts_permanent_delete", "contacts_folder_delete":
 		return true
 	default:
@@ -629,6 +638,7 @@ type contactsExportArgs struct {
 	Folder  string `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
 	Max     int    `json:"max,omitempty" jsonschema:"最多导出多少个联系人，默认 500"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Format  string `json:"format,omitempty" jsonschema:"格式: csv 或 vcf"`
 }
 
 // contactsImportArgs 是 contacts_import tool 的输入参数。
@@ -638,6 +648,7 @@ type contactsImportArgs struct {
 	Max     int    `json:"max,omitempty" jsonschema:"最多导入多少个联系人，默认 500"`
 	Confirm bool   `json:"confirm,omitempty" jsonschema:"确认实际创建联系人；不填时只 dry-run"`
 	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+	Format  string `json:"format,omitempty" jsonschema:"格式: csv 或 vcf"`
 }
 
 // calendarAttachmentDeleteArgs 是 calendar_attachment_delete tool 的输入参数。
@@ -659,6 +670,50 @@ type calendarAttachmentReplaceArgs struct {
 type auditListArgs struct {
 	Limit  int    `json:"limit,omitempty" jsonschema:"最多返回多少条记录，默认 50"`
 	Action string `json:"action,omitempty" jsonschema:"按 action 前缀过滤"`
+}
+
+// mailFolderTreeArgs 是 mail_folder_tree tool 的输入参数。
+type mailFolderTreeArgs struct {
+	Top     int    `json:"top,omitempty" jsonschema:"每层最多读取多少个文件夹，默认 200"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailBulkMoveArgs 是 mail_bulk_move tool 的输入参数。
+type mailBulkMoveArgs struct {
+	IDs     []string `json:"ids" jsonschema:"邮件 ID 列表"`
+	Folder  string   `json:"folder" jsonschema:"目标文件夹名称或 ID"`
+	Confirm bool     `json:"confirm,omitempty" jsonschema:"确认实际移动邮件"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailBulkDeleteArgs 是 mail_bulk_delete tool 的输入参数。
+type mailBulkDeleteArgs struct {
+	IDs     []string `json:"ids" jsonschema:"邮件 ID 列表"`
+	Confirm bool     `json:"confirm,omitempty" jsonschema:"确认实际删除邮件"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsBulkDeleteArgs 是 contacts_bulk_delete tool 的输入参数。
+type contactsBulkDeleteArgs struct {
+	IDs     []string `json:"ids" jsonschema:"联系人 ID 列表"`
+	Confirm bool     `json:"confirm,omitempty" jsonschema:"确认实际删除联系人"`
+	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// calendarAttachmentBulkDeleteArgs 是 calendar_attachment_bulk_delete tool 的输入参数。
+type calendarAttachmentBulkDeleteArgs struct {
+	ID            string   `json:"id" jsonschema:"事件 ID"`
+	AttachmentIDs []string `json:"attachmentIds" jsonschema:"附件 ID 列表"`
+	Confirm       bool     `json:"confirm,omitempty" jsonschema:"确认实际删除附件"`
+	Account       string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftAttachmentBulkDeleteArgs 是 mail_draft_attachment_bulk_delete tool 的输入参数。
+type mailDraftAttachmentBulkDeleteArgs struct {
+	ID            string   `json:"id" jsonschema:"草稿 ID"`
+	AttachmentIDs []string `json:"attachmentIds" jsonschema:"附件 ID 列表"`
+	Confirm       bool     `json:"confirm,omitempty" jsonschema:"确认实际删除附件"`
+	Account       string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
@@ -823,6 +878,18 @@ func main() {
 	mcp.AddTool(server, newTool("calendar_attachment_replace", "替换日历事件附件"), calendarAttachmentReplaceHandler)
 
 	mcp.AddTool(server, newTool("audit_list", "查询本地操作审计日志"), auditListHandler)
+
+	mcp.AddTool(server, newTool("mail_folder_tree", "以树形列出邮件文件夹"), mailFolderTreeHandler)
+
+	mcp.AddTool(server, newTool("mail_bulk_move", "批量移动邮件"), mailBulkMoveHandler)
+
+	mcp.AddTool(server, newTool("mail_bulk_delete", "批量删除邮件"), mailBulkDeleteHandler)
+
+	mcp.AddTool(server, newTool("contacts_bulk_delete", "批量删除联系人"), contactsBulkDeleteHandler)
+
+	mcp.AddTool(server, newTool("calendar_attachment_bulk_delete", "批量删除日历事件附件"), calendarAttachmentBulkDeleteHandler)
+
+	mcp.AddTool(server, newTool("mail_draft_attachment_bulk_delete", "批量删除草稿附件"), mailDraftAttachmentBulkDeleteHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -3475,8 +3542,17 @@ func contactsExportHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := contactcsv.ExportFile(args.File, contacts); err != nil {
-		return nil, nil, err
+	switch strings.ToLower(strings.TrimSpace(args.Format)) {
+	case "csv", "":
+		if err := contactcsv.ExportFile(args.File, contacts); err != nil {
+			return nil, nil, err
+		}
+	case "vcf", "vcard":
+		if err := vcard.ExportFile(args.File, contacts); err != nil {
+			return nil, nil, err
+		}
+	default:
+		return nil, nil, fmt.Errorf("不支持的导出格式: %s", args.Format)
 	}
 	return jsonResult(map[string]any{
 		"success": true,
@@ -3491,7 +3567,16 @@ func contactsImportHandler(ctx context.Context, req *mcp.CallToolRequest, args c
 	if strings.TrimSpace(args.File) == "" {
 		return nil, nil, fmt.Errorf("导入文件路径不能为空")
 	}
-	inputs, err := contactcsv.ReadFile(args.File)
+	var inputs []graph.ContactInput
+	var err error
+	switch strings.ToLower(strings.TrimSpace(args.Format)) {
+	case "csv", "":
+		inputs, err = contactcsv.ReadFile(args.File)
+	case "vcf", "vcard":
+		inputs, err = vcard.ReadFile(args.File)
+	default:
+		return nil, nil, fmt.Errorf("不支持的导入格式: %s", args.Format)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -3649,6 +3734,186 @@ func auditListHandler(ctx context.Context, req *mcp.CallToolRequest, args auditL
 	})
 }
 
+// mailFolderTreeHandler 以树形列出邮件文件夹。
+func mailFolderTreeHandler(ctx context.Context, req *mcp.CallToolRequest, args mailFolderTreeArgs) (*mcp.CallToolResult, any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	tree, err := graph.ListMailFolderTree(ctx, loginResult.AccessToken, args.Top)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"folders": tree,
+	})
+}
+
+func mailBulkMoveHandler(ctx context.Context, req *mcp.CallToolRequest, args mailBulkMoveArgs) (*mcp.CallToolResult, any, error) {
+	if len(args.IDs) == 0 || strings.TrimSpace(args.Folder) == "" {
+		return nil, nil, fmt.Errorf("邮件 ID 列表和目标文件夹不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderID, err := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, args.Folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := graph.BulkMoveMessages(ctx, loginResult.AccessToken, args.IDs, folderID, args.Confirm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{"success": true, "account": selected.Username, "result": result})
+}
+
+func mailBulkDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailBulkDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if len(args.IDs) == 0 {
+		return nil, nil, fmt.Errorf("邮件 ID 列表不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := graph.BulkDeleteMessages(ctx, loginResult.AccessToken, args.IDs, args.Confirm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{"success": true, "account": selected.Username, "result": result})
+}
+
+func contactsBulkDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsBulkDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if len(args.IDs) == 0 {
+		return nil, nil, fmt.Errorf("联系人 ID 列表不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := graph.BulkDeleteContacts(ctx, loginResult.AccessToken, args.IDs, args.Confirm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{"success": true, "account": selected.Username, "result": result})
+}
+
+func calendarAttachmentBulkDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarAttachmentBulkDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || len(args.AttachmentIDs) == 0 {
+		return nil, nil, fmt.Errorf("事件 ID 和附件 ID 列表不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := graph.BulkDeleteCalendarEventAttachments(ctx, loginResult.AccessToken, args.ID, args.AttachmentIDs, args.Confirm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{"success": true, "account": selected.Username, "result": result})
+}
+
+func mailDraftAttachmentBulkDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftAttachmentBulkDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || len(args.AttachmentIDs) == 0 {
+		return nil, nil, fmt.Errorf("草稿 ID 和附件 ID 列表不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := graph.BulkDeleteDraftAttachments(ctx, loginResult.AccessToken, args.ID, args.AttachmentIDs, args.Confirm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{"success": true, "account": selected.Username, "result": result})
+}
+
 // jsonResult 把任意结构序列化成缩进 JSON，并包装成 MCP 文本结果。
 func jsonResult(value any) (*mcp.CallToolResult, any, error) {
 	data, err := json.MarshalIndent(value, "", "  ")
@@ -3659,5 +3924,6 @@ func jsonResult(value any) (*mcp.CallToolResult, any, error) {
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: string(data)},
 		},
+		StructuredContent: map[string]any{"result": value},
 	}, nil, nil
 }

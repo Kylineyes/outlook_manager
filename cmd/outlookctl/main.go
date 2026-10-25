@@ -25,6 +25,7 @@ import (
 	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
 	"github.com/Kylineyes/outlook-manager/internal/store"
+	"github.com/Kylineyes/outlook-manager/internal/vcard"
 )
 
 // version 表示当前构建版本。
@@ -88,6 +89,8 @@ func run(args []string) error {
 		return runMail(args[1:])
 	case "audit":
 		return runAudit(args[1:])
+	case "doctor":
+		return runDoctor(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(os.Stdout, "outlookctl %s\n", version)
 		return nil
@@ -109,13 +112,13 @@ func printGroupUsage(group string) {
 		fmt.Fprintln(os.Stdout, "用法: outlookctl account <list|use>")
 	case "mail":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl mail <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
 	case "calendar":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl calendar <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, create, update, delete, cancel, respond")
+		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, attachment-delete, attachment-replace, attachment-bulk-delete, create, update, delete, cancel, respond")
 	case "contacts":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl contacts <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import, bulk-delete")
 	case "audit":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list>")
 	}
@@ -385,6 +388,8 @@ func runMail(args []string) error {
 		return runMailSetRead(args[1:], false)
 	case "folders":
 		return runMailFolders(args[1:])
+	case "folder-tree":
+		return runMailFolderTree(args[1:])
 	case "move":
 		return runMailMove(args[1:])
 	case "delete":
@@ -413,6 +418,12 @@ func runMail(args []string) error {
 		return runMailDraftAttachmentDelete(args[1:])
 	case "draft-attachment-replace":
 		return runMailDraftAttachmentReplace(args[1:])
+	case "draft-attachment-bulk-delete":
+		return runMailDraftAttachmentBulkDelete(args[1:])
+	case "bulk-move":
+		return runMailBulkMove(args[1:])
+	case "bulk-delete":
+		return runMailBulkDelete(args[1:])
 	case "folder-create":
 		return runMailFolderCreate(args[1:])
 	case "folder-rename":
@@ -1917,6 +1928,8 @@ func runCalendar(args []string) error {
 		return runCalendarAttachmentDelete(args[1:])
 	case "attachment-replace":
 		return runCalendarAttachmentReplace(args[1:])
+	case "attachment-bulk-delete":
+		return runCalendarAttachmentBulkDelete(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
@@ -2052,6 +2065,8 @@ func runContacts(args []string) error {
 		return runContactsExport(args[1:])
 	case "import":
 		return runContactsImport(args[1:])
+	case "bulk-delete":
+		return runContactsBulkDelete(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
@@ -4159,7 +4174,8 @@ func runMailDraftAttachmentReplace(args []string) error {
 func runContactsExport(args []string) error {
 	fs := flag.NewFlagSet("contacts export", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	outFlag := fs.String("out", "", "导出的 CSV 文件路径")
+	outFlag := fs.String("out", "", "导出的文件路径")
+	formatFlag := fs.String("format", "csv", "导出格式: csv 或 vcf")
 	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
 	maxFlag := fs.Int("max", 500, "最多导出多少个联系人，范围 1-1000")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
@@ -4198,8 +4214,17 @@ func runContactsExport(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := contactcsv.ExportFile(*outFlag, contacts); err != nil {
-		return err
+	switch strings.ToLower(strings.TrimSpace(*formatFlag)) {
+	case "csv", "":
+		if err := contactcsv.ExportFile(*outFlag, contacts); err != nil {
+			return err
+		}
+	case "vcf", "vcard":
+		if err := vcard.ExportFile(*outFlag, contacts); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("不支持的导出格式: %s", *formatFlag)
 	}
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
 	fmt.Fprintf(os.Stdout, "联系人已导出: %d\n", len(contacts))
@@ -4211,7 +4236,8 @@ func runContactsExport(args []string) error {
 func runContactsImport(args []string) error {
 	fs := flag.NewFlagSet("contacts import", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	fileFlag := fs.String("file", "", "联系人 CSV 文件路径")
+	fileFlag := fs.String("file", "", "联系人文件路径")
+	formatFlag := fs.String("format", "csv", "导入格式: csv 或 vcf")
 	folderFlag := fs.String("folder", "", "目标联系人文件夹名称或 ID；不填时使用默认文件夹")
 	maxFlag := fs.Int("max", 500, "最多导入多少个联系人，范围 1-1000")
 	confirmFlag := fs.Bool("confirm", false, "确认实际创建联系人；不填时只 dry-run")
@@ -4222,7 +4248,16 @@ func runContactsImport(args []string) error {
 	if strings.TrimSpace(*fileFlag) == "" {
 		return errors.New("用法: outlookctl contacts import --file <CSV文件> [--folder <文件夹>] [--max 500] [--confirm]")
 	}
-	inputs, err := contactcsv.ReadFile(*fileFlag)
+	var inputs []graph.ContactInput
+	var err error
+	switch strings.ToLower(strings.TrimSpace(*formatFlag)) {
+	case "csv", "":
+		inputs, err = contactcsv.ReadFile(*fileFlag)
+	case "vcf", "vcard":
+		inputs, err = vcard.ReadFile(*fileFlag)
+	default:
+		return fmt.Errorf("不支持的导入格式: %s", *formatFlag)
+	}
 	if err != nil {
 		return err
 	}
@@ -4370,6 +4405,281 @@ func runCalendarAttachmentReplace(args []string) error {
 	return nil
 }
 
+func printBulkResult(username string, result *graph.BulkResult, jsonFlag bool) error {
+	if jsonFlag {
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", username)
+	fmt.Fprintf(os.Stdout, "总数: %d\n", result.Total)
+	fmt.Fprintf(os.Stdout, "成功: %d\n", result.Succeeded)
+	fmt.Fprintf(os.Stdout, "失败: %d\n", result.Failed)
+	if result.DryRun {
+		fmt.Fprintln(os.Stdout, "模式: dry-run，未修改任何数据；确认后加 --confirm 执行")
+	}
+	for _, failure := range result.Failures {
+		fmt.Fprintf(os.Stderr, "失败: %s\n", failure)
+	}
+	return nil
+}
+
+func runMailBulkMove(args []string) error {
+	fs := flag.NewFlagSet("mail bulk-move", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idsFlag := fs.String("ids", "", "邮件 ID 列表，多个用逗号分隔")
+	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID")
+	confirmFlag := fs.Bool("confirm", false, "确认实际移动邮件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*idsFlag)
+	if len(ids) == 0 || strings.TrimSpace(*folderFlag) == "" {
+		return errors.New("用法: outlookctl mail bulk-move --ids <id1,id2> --folder <文件夹> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID, err := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkMoveMessages(ctx, loginResult.AccessToken, ids, folderID, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runMailBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("mail bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idsFlag := fs.String("ids", "", "邮件 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除邮件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*idsFlag)
+	if len(ids) == 0 {
+		return errors.New("用法: outlookctl mail bulk-delete --ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteMessages(ctx, loginResult.AccessToken, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runContactsBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("contacts bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idsFlag := fs.String("ids", "", "联系人 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除联系人")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*idsFlag)
+	if len(ids) == 0 {
+		return errors.New("用法: outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteContacts(ctx, loginResult.AccessToken, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runCalendarAttachmentBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentsFlag := fs.String("attachment-ids", "", "附件 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除附件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*attachmentsFlag)
+	if strings.TrimSpace(*idFlag) == "" || len(ids) == 0 {
+		return errors.New("用法: outlookctl calendar attachment-bulk-delete --id <事件ID> --attachment-ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteCalendarEventAttachments(ctx, loginResult.AccessToken, *idFlag, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runMailDraftAttachmentBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("mail draft-attachment-bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	attachmentsFlag := fs.String("attachment-ids", "", "附件 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除附件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*attachmentsFlag)
+	if strings.TrimSpace(*idFlag) == "" || len(ids) == 0 {
+		return errors.New("用法: outlookctl mail draft-attachment-bulk-delete --id <草稿ID> --attachment-ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteDraftAttachments(ctx, loginResult.AccessToken, *idFlag, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runMailFolderTree(args []string) error {
+	fs := flag.NewFlagSet("mail folder-tree", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	topFlag := fs.Int("top", 200, "每层最多读取多少个文件夹")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	tree, err := graph.ListMailFolderTree(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(tree, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	var printNode func(nodes []graph.MailFolderNode, depth int)
+	printNode = func(nodes []graph.MailFolderNode, depth int) {
+		for _, node := range nodes {
+			fmt.Fprintf(os.Stdout, "%s- %s | 未读=%d | 总数=%d | id=%s\n", strings.Repeat("  ", depth), node.DisplayName, node.UnreadItemCount, node.TotalItemCount, node.ID)
+			printNode(node.Children, depth+1)
+		}
+	}
+	printNode(tree, 0)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -4379,6 +4689,7 @@ func printUsage() {
   outlookctl auth status                   验证本地 token 缓存和静默刷新
   outlookctl account list                  查看本地账号档案
   outlookctl account use <email>           切换默认账号
+  outlookctl doctor                        执行环境与账号诊断
   outlookctl audit list [--limit 50]       查询本地审计日志
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail search --query <关键字>       搜索邮件
@@ -4387,6 +4698,10 @@ func printUsage() {
   outlookctl mail mark-read <message-id>    标记邮件为已读
   outlookctl mail mark-unread <message-id>  标记邮件为未读
   outlookctl mail folders                    列出邮件文件夹
+  outlookctl mail folder-tree                以树形列出邮件文件夹
+  outlookctl mail bulk-move --ids <id1,id2> --folder <文件夹> [--confirm]  批量移动邮件
+  outlookctl mail bulk-delete --ids <id1,id2> [--confirm]  批量删除邮件
+  outlookctl mail draft-attachment-bulk-delete --id <草稿ID> --attachment-ids <id1,id2> [--confirm]  批量删除草稿附件
   outlookctl mail move <message-id> --folder <文件夹>  移动邮件
   outlookctl mail delete <message-id>        删除邮件
   outlookctl mail permanent-delete --id <邮件ID>  永久删除邮件
@@ -4399,6 +4714,7 @@ func printUsage() {
   outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out <文件>  下载事件附件
   outlookctl calendar attachment-delete --id <事件ID> --attachment-id <附件ID>  删除事件附件
   outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file <文件>  替换事件附件
+  outlookctl calendar attachment-bulk-delete --id <事件ID> --attachment-ids <id1,id2> [--confirm]  批量删除事件附件
   outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
@@ -4422,6 +4738,7 @@ func printUsage() {
   outlookctl contacts copy --id <联系人ID> --folder <文件夹>  复制联系人
   outlookctl contacts export --out <CSV文件>  导出联系人
   outlookctl contacts import --file <CSV文件> [--confirm]  导入联系人
+  outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]  批量删除联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件
