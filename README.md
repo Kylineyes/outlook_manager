@@ -11,6 +11,9 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱邮件列表
 - 单封邮件详情
 - 邮件搜索
+- 高级邮件查询
+- 保存邮件视图
+- 邮箱设置管理（自动回复、时区、语言、工作时间）
 - 邮件分页全量拉取
 - Graph 与 token 请求临时错误自动重试
 - CLI 子命令 --help 体系
@@ -67,7 +70,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 批量邮件、联系人、附件删除/移动操作
 - 联系人批量导入导出（CSV / vCard）
 - MCP tool annotations（只读/破坏性提示）
-- MCP 结构化输出（outputSchema / structuredContent）
+- MCP 结构化输出（outputSchema / structuredContent / 统一错误码）
+- MCP 每个 tool 独立 schema 和结构化错误结果
 - CLI doctor 环境与账号诊断
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
@@ -116,6 +120,13 @@ outlookctl mail list --top 10
 outlookctl mail list --all --max 500
 outlookctl mail read <message-id>
 outlookctl mail search --query "关键字"
+outlookctl mail query --from someone@example.com --unread --has-attachment --after 2026-10-01
+outlookctl mail view save "未读重要" --from someone@example.com --unread
+outlookctl mail view list
+outlookctl mail view run "未读重要"
+outlookctl mailbox settings
+outlookctl mailbox auto-reply get
+outlookctl mailbox timezone get
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文"
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --importance high --read-receipt --delivery-receipt
@@ -200,7 +211,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 77 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 87 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -217,6 +228,8 @@ docs/mcp.md
 
 双账号日历验证计划见：`docs/calendar-invite-test-plan.md`。
 
+后续开发计划见 `ROADMAP.md`。
+
 ## 本地数据
 
 默认数据目录：
@@ -232,6 +245,7 @@ docs/mcp.md
 - `token-cache.bin`：DPAPI 加密后的 access token 和 refresh token
 - `logs\auth.log`：预留的认证日志位置
 - `logs\audit.log`：JSON Lines 操作审计日志
+- `views.json`：保存的邮件查询视图
 
 查询审计日志：
 

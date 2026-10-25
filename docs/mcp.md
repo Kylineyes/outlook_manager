@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 77 个 MCP tools 的分组说明
+- 87 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 77 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 87 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -166,6 +166,11 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | --- | --- | --- |
 | `account_list` | 列出本地已登录账号档案 | 无 |
 | `auth_status` | 检查 token 缓存并尝试静默刷新 | 无 |
+| `mailbox_settings_get` | 读取邮箱设置 | `account` |
+| `mailbox_auto_reply_get` | 读取自动回复设置 | `account` |
+| `mailbox_auto_reply_set` | 设置自动回复 | `status`、`internalMessage`、`externalMessage`、`externalAudience`、`start`、`end`、`timeZone`、`account` |
+| `mailbox_timezone_get` | 读取邮箱时区 | `account` |
+| `mailbox_timezone_set` | 设置邮箱时区 | `value`、`account` |
 | `audit_list` | 查询本地审计日志 | `limit`、`action` |
 
 ### 6.2 邮件读取与查询
@@ -175,6 +180,11 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_list` | 读取收件箱或指定文件夹邮件 | `account`、`folder`、`top`、`all`、`max` |
 | `mail_read` | 读取单封邮件详情 | `id`、`account` |
 | `mail_search` | 关键字搜索邮件 | `query`、`folder`、`top`、`account` |
+| `mail_query` | 高级邮件查询 | `folder`、`from`、`to`、`subject`、`body`、`search`、`importance`、`category`、`after`、`before`、`unreadOnly`、`hasAttachment`、`top`、`account` |
+| `mail_view_save` | 保存邮件视图 | `name` + 高级查询参数 |
+| `mail_view_list` | 列出邮件视图 | 无 |
+| `mail_view_run` | 运行邮件视图 | `name`、`account` |
+| `mail_view_delete` | 删除邮件视图 | `name` |
 | `mail_folders_list` | 列出邮件文件夹 | `top`、`account` |
 | `mail_folder_tree` | 树形列出邮件文件夹 | `top`、`account` |
 | `mail_attachments_list` | 列出邮件附件 | `id`、`account` |
@@ -664,7 +674,64 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
   }
 }
 ```
-## 8. MCP tool annotations
+### 7.20 邮箱设置
+
+```json
+{
+  "tool": "mailbox_settings_get",
+  "arguments": {}
+}
+```
+
+```json
+{
+  "tool": "mailbox_auto_reply_set",
+  "arguments": {
+    "status": "alwaysEnabled",
+    "internalMessage": "我正在休假",
+    "externalMessage": "I am out of office"
+  }
+}
+```
+
+### 7.21 高级邮件查询和保存视图
+
+```json
+{
+  "tool": "mail_query",
+  "arguments": {
+    "folder": "inbox",
+    "from": "noreply@example.com",
+    "unreadOnly": true,
+    "hasAttachment": true,
+    "after": "2026-10-01",
+    "top": 100
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_view_save",
+  "arguments": {
+    "name": "未读重要",
+    "from": "noreply@example.com",
+    "unreadOnly": true,
+    "top": 100
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_view_run",
+  "arguments": {
+    "name": "未读重要"
+  }
+}
+```
+
+## 8. MCP tool annotations 和结构化输出
 
 所有 MCP tools 都带有 annotations：
 
@@ -672,9 +739,31 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 - `destructiveHint`：是否可能执行删除、永久删除、规则回放等破坏性操作
 - `openWorldHint`：是否访问 Microsoft Graph 外部环境
 - `idempotentHint`：只读工具标记为幂等
-- 所有 tools 都提供通用 `outputSchema`，并在 `structuredContent.result` 中返回结构化结果
 
-客户端可据此决定是否要求用户确认。
+每个 tool 都有独立的 `outputSchema`：
+
+- `$id` 按 tool 名称生成
+- 顶层包含 `success`、`account`、`result`、`error`
+- 成功结果写入 `structuredContent.result`
+- 失败结果写入 `structuredContent.error`
+- 失败时会设置 `isError: true`
+
+统一错误码包括：
+
+```text
+unauthorized
+forbidden
+not_found
+rate_limited
+invalid_argument
+timeout
+network_error
+auth_error
+graph_error
+```
+
+客户端可据此决定是否要求用户确认，也可以根据错误码自动重试。
+
 ## 9. 返回格式
 
 大多数 tools 返回 JSON 文本，外层通常包含：
