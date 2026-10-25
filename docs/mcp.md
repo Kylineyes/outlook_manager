@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 63 个 MCP tools 的分组说明
+- 64 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 63 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 64 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -227,6 +227,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `calendar_delete` | 删除日历事件 | `id`、`account` |
 | `calendar_cancel` | 取消日历事件 | `id`、`comment`、`account` |
 | `calendar_respond` | 响应日历邀请 | `id`、`response`（accept/decline/tentative）、`comment`、`account` |
+| `calendar_forward` | 转发日历事件 | `id`、`to`、`comment`、`account` |
 | `calendar_attachments_list` | 列出事件附件 | `id`、`account` |
 | `calendar_attachment_add` | 给事件添加附件 | `id`、`file`、`account` |
 | `calendar_attachment_get` | 下载事件附件 | `id`、`attachmentId`、`account` |
@@ -489,6 +490,18 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 说明：Microsoft Graph 没有「立即运行规则」的官方端点。这里是本地回放功能，只支持可安全解析的常见条件和动作；遇到不支持的规则条件或动作会拒绝执行，避免误处理邮件。
 
 当前回放支持完整正文匹配（HTML 会转换为纯文本）、多文件夹扫描，以及 `copyToFolder`、`forwardTo`、`redirectTo` 等动作。
+### 7.13 转发日历事件
+
+```json
+{
+  "tool": "calendar_forward",
+  "arguments": {
+    "id": "<event-id>",
+    "to": ["someone@example.com"],
+    "comment": "请参加"
+  }
+}
+```
 ## 8. 返回格式
 
 大多数 tools 返回 JSON 文本，外层通常包含：

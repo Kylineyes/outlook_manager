@@ -46,6 +46,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 日历事件大附件上传（3 MiB - 150 MiB）
 - 日历事件取消
 - 日历邀请响应（接受、拒绝、暂定）
+- 日历事件转发
 - 联系人读取
 - 联系人创建、更新、删除
 - 联系人搜索
@@ -146,6 +147,7 @@ outlookctl calendar update --id <事件ID> --subject "主题" --start "2026-10-2
 outlookctl calendar delete --id <事件ID>
 outlookctl calendar cancel --id <事件ID> --comment "取消说明"
 outlookctl calendar respond --id <事件ID> --response accept
+outlookctl calendar forward --id <事件ID> --to someone@example.com
 outlookctl contacts list --top 20
 outlookctl contacts list --folder "客户" --top 20
 outlookctl contacts search --query "张"
@@ -182,7 +184,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 63 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 64 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
