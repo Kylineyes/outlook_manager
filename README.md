@@ -62,6 +62,9 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 联系人照片读取与上传
 - 草稿创建、列表、发送
 - 草稿更新
+- 草稿附件删除/替换
+- 联系人批量导入导出（CSV）
+- MCP tool annotations（只读/破坏性提示）
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
 ## 环境要求
@@ -160,6 +163,8 @@ outlookctl contacts create --display-name "名称" --email someone@example.com -
 outlookctl contacts create --folder "客户" --display-name "名称" --email someone@example.com
 outlookctl contacts move --id <联系人ID> --folder "客户"
 outlookctl contacts copy --id <联系人ID> --folder "客户" --name "副本名称"
+outlookctl contacts export --out C:\temp\contacts.csv
+outlookctl contacts import --file C:\temp\contacts.csv --confirm
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl contacts permanent-delete --id <联系人ID>
@@ -174,6 +179,8 @@ outlookctl mail draft-create --to someone@example.com --subject "主题" --body 
 outlookctl mail drafts
 outlookctl mail draft-send <draft-id>
 outlookctl mail draft-update --id <草稿ID> --to someone@example.com --subject "新主题" --body "新正文"
+outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>
+outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file C:\temp\new.pdf
 outlookctl mail folder-create --name "新文件夹"
 outlookctl mail folder-rename <folder-id> --name "新名称"
 outlookctl mail folder-delete <folder-id>
@@ -184,7 +191,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 64 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 68 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿

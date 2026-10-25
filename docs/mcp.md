@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 64 个 MCP tools 的分组说明
+- 68 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 64 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 68 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -191,6 +191,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_forward` | 转发邮件 | `id`、`to`、`body`、`account` |
 | `mail_draft_create` | 创建草稿 | 与 `mail_send` 类似，不含 `saveToSentItems` |
 | `mail_draft_update` | 更新草稿 | `id`、`to`、`subject`、`body`、`attachments`、`importance`、回执参数、`account` |
+| `mail_draft_attachment_delete` | 删除草稿附件 | `id`、`attachmentId`、`account` |
+| `mail_draft_attachment_replace` | 替换草稿附件 | `id`、`attachmentId`、`file`、`account` |
 | `mail_draft_send` | 发送草稿 | `id`、`account` |
 | `mail_drafts_list` | 列出草稿 | `top`、`account` |
 | `mail_mark_read` | 标记已读 | `id`、`account` |
@@ -254,6 +256,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `contacts_folder_delete` | 删除联系人文件夹 | `id`、`account` |
 | `contacts_photo_get` | 读取联系人照片 | `id`、`account` |
 | `contacts_photo_set` | 设置联系人照片 | `id`、`file`、`account` |
+| `contacts_export` | 导出联系人到 CSV | `file`、`folder`、`max`、`account` |
+| `contacts_import` | 从 CSV 导入联系人 | `file`、`folder`、`max`、`confirm`、`account` |
 
 ## 7. 常用示例
 
@@ -502,7 +506,77 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
   }
 }
 ```
-## 8. 返回格式
+### 7.14 删除或替换草稿附件
+
+```json
+{
+  "tool": "mail_draft_attachment_delete",
+  "arguments": {
+    "id": "<draft-id>",
+    "attachmentId": "<attachment-id>"
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_draft_attachment_replace",
+  "arguments": {
+    "id": "<draft-id>",
+    "attachmentId": "<old-attachment-id>",
+    "file": "C:\\temp\\new.pdf"
+  }
+}
+```
+
+### 7.15 联系人 CSV 导入导出
+
+导出：
+
+```json
+{
+  "tool": "contacts_export",
+  "arguments": {
+    "file": "C:\\temp\\contacts.csv",
+    "max": 500
+  }
+}
+```
+
+导入默认是 dry-run：
+
+```json
+{
+  "tool": "contacts_import",
+  "arguments": {
+    "file": "C:\\temp\\contacts.csv",
+    "confirm": false
+  }
+}
+```
+
+确认导入：
+
+```json
+{
+  "tool": "contacts_import",
+  "arguments": {
+    "file": "C:\\temp\\contacts.csv",
+    "confirm": true
+  }
+}
+```
+## 8. MCP tool annotations
+
+所有 MCP tools 都带有 annotations：
+
+- `readOnlyHint`：是否为只读工具
+- `destructiveHint`：是否可能执行删除、永久删除、规则回放等破坏性操作
+- `openWorldHint`：是否访问 Microsoft Graph 外部环境
+- `idempotentHint`：只读工具标记为幂等
+
+客户端可据此决定是否要求用户确认。
+## 9. 返回格式
 
 大多数 tools 返回 JSON 文本，外层通常包含：
 
@@ -523,7 +597,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 
 ID 都是 Graph 返回的不透明字符串，必须原样传递，不要自行截断或 URL 编码。
 
-## 9. 故障排查
+## 10. 故障排查
 
 ### 9.1 `auth_status` 显示刷新失败
 
@@ -561,7 +635,7 @@ Graph 请求层会自动重试临时网络错误、HTTP 429 和 5xx。若仍失�
 
 `attachments`、`file`、`outputPath` 等路径都相对于 MCP server 所在机器解析。建议使用绝对路径。
 
-## 10. 安全说明
+## 11. 安全说明
 
 - token-cache.bin 使用 Windows DPAPI 加密，只能由同一 Windows 用户解密
 - accounts.json 是可读账号元数据，不包含 token
@@ -570,7 +644,7 @@ Graph 请求层会自动重试临时网络错误、HTTP 429 和 5xx。若仍失�
 - MCP tools 可以读取本机指定路径并上传为附件，请只连接可信的 MCP 客户端
 - 永久删除、取消会议、发送邮件等操作不可逆，建议在自动化流程中增加人工确认
 
-## 11. 发布
+## 12. 发布
 
 GitHub Actions 在推送 `v*` tag 时构建 Windows amd64 二进制：
 
