@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 68 个 MCP tools 的分组说明
+- 71 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 68 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 71 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -166,6 +166,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | --- | --- | --- |
 | `account_list` | 列出本地已登录账号档案 | 无 |
 | `auth_status` | 检查 token 缓存并尝试静默刷新 | 无 |
+| `audit_list` | 查询本地审计日志 | `limit`、`action` |
 
 ### 6.2 邮件读取与查询
 
@@ -208,7 +209,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_folder_create` | 创建邮件文件夹 | `name`、`parent`、`account` |
 | `mail_folder_rename` | 重命名邮件文件夹 | `id`、`name`、`account` |
 | `mail_folder_delete` | 删除邮件文件夹 | `id`、`account` |
-| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`moveTo`、`assignCategories`、`markAsRead`、`delete`、`stop`、`disabled`、`applyNow`、`confirmApply`、`applyFolder`、`applyFolders`、`applyMax`、`account` |
+| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`bodyContains`、`bodyOrSubjectContains`、`hasAttachments`、`importance`、`senderContains`、`recipientContains`、`moveTo`、`copyTo`、`assignCategories`、`forwardTo`、`redirectTo`、`markAsRead`、`markImportance`、`delete`、`permanentDelete`、`stop`、`disabled`、`applyNow`、`confirmApply`、`applyFolder`、`applyFolders`、`applyMax`、`account` |
 | `mail_rule_update` | 更新收件箱规则 | `id` + 创建规则参数 |
 | `mail_rule_apply` | 回放规则到已有邮件，默认 dry-run | `id`、`folder`、`folders`、`max`、`confirm`、`account` |
 | `mail_rule_delete` | 删除收件箱规则 | `id`、`account` |
@@ -233,6 +234,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `calendar_attachments_list` | 列出事件附件 | `id`、`account` |
 | `calendar_attachment_add` | 给事件添加附件 | `id`、`file`、`account` |
 | `calendar_attachment_get` | 下载事件附件 | `id`、`attachmentId`、`account` |
+| `calendar_attachment_delete` | 删除事件附件 | `id`、`attachmentId`、`account` |
+| `calendar_attachment_replace` | 替换事件附件 | `id`、`attachmentId`、`file`、`account` |
 
 说明：`calendar_respond` 只能用于别人发来的会议邀请；如果当前账号是会议组织者，Graph 会拒绝响应。`calendar_cancel` 通常也需要当前账号是会议组织者。
 
@@ -566,6 +569,40 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
   }
 }
 ```
+### 7.16 删除或替换日历事件附件
+
+```json
+{
+  "tool": "calendar_attachment_delete",
+  "arguments": {
+    "id": "<event-id>",
+    "attachmentId": "<attachment-id>"
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_attachment_replace",
+  "arguments": {
+    "id": "<event-id>",
+    "attachmentId": "<old-attachment-id>",
+    "file": "C:\\temp\\new.pdf"
+  }
+}
+```
+
+### 7.17 查询审计日志
+
+```json
+{
+  "tool": "audit_list",
+  "arguments": {
+    "limit": 20,
+    "action": "mail."
+  }
+}
+```
 ## 8. MCP tool annotations
 
 所有 MCP tools 都带有 annotations：
@@ -641,6 +678,7 @@ Graph 请求层会自动重试临时网络错误、HTTP 429 和 5xx。若仍失�
 - accounts.json 是可读账号元数据，不包含 token
 - 不要把 token-cache.bin 提交到仓库或发送给他人
 - `logs/audit.log` 记录关键写操作，不记录邮件正文、附件内容或 token
+- 当前审计日志默认单文件上限 10 MiB，保留最近 5 个历史文件，并清理 30 天前的日志。
 - MCP tools 可以读取本机指定路径并上传为附件，请只连接可信的 MCP 客户端
 - 永久删除、取消会议、发送邮件等操作不可逆，建议在自动化流程中增加人工确认
 

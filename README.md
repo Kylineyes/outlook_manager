@@ -14,7 +14,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件分页全量拉取
 - Graph 与 token 请求临时错误自动重试
 - CLI 子命令 --help 体系
-- 本地操作审计日志
+- 本地操作审计日志（轮转与查询）
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -34,7 +34,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱规则管理
 - 收件箱规则更新
 - 收件箱规则回放（完整正文、多文件夹、dry-run / confirm）
-- 规则动作（分类、复制、移动、转发、重定向、删除）
+- 规则高级条件与动作（正文、发件人、收件人、分类、复制、移动、转发、重定向、删除）
 - 主类别管理
 - 主类别颜色更新
 - 日历事件读取
@@ -42,7 +42,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 日历事件创建、更新、删除
 - 日历参与人与提醒
 - 日历事件分类、状态、重要性、敏感度
-- 日历事件附件读取、添加、下载
+- 日历事件附件读取、添加、下载、删除、替换
 - 日历事件大附件上传（3 MiB - 150 MiB）
 - 日历事件取消
 - 日历邀请响应（接受、拒绝、暂定）
@@ -132,6 +132,7 @@ outlookctl mail rule-delete --id <规则ID>
 outlookctl mail rule-update --id <规则ID> --name "规则" --subject-contains "关键字" --mark-read
 outlookctl mail rule-apply --id <规则ID> [--confirm]
 outlookctl mail rule-create --name "分类规则" --subject-contains "关键字" --category "项目A" --apply-now --confirm-apply
+outlookctl mail rule-create --name "高级规则" --body-contains "关键字" --has-attachments --copy-to "归档" --forward-to someone@example.com --disabled
 outlookctl mail master-categories
 outlookctl mail master-category-create --name "项目A" --color preset0
 outlookctl mail master-category-delete --id <类别ID>
@@ -142,6 +143,8 @@ outlookctl calendar list --calendar "日历" --days 7
 outlookctl calendar attachments --id <事件ID>
 outlookctl calendar attachment-add --id <事件ID> --file C:\temp\file.pdf
 outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out C:\temp\file.pdf
+outlookctl calendar attachment-delete --id <事件ID> --attachment-id <附件ID>
+outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file C:\temp\new.pdf
 outlookctl calendar create --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --attendees someone@example.com --reminder-minutes 10
 outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --categories "项目A,重要" --show-as busy --importance high --sensitivity private
@@ -191,7 +194,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 68 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 71 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -223,6 +226,13 @@ docs/mcp.md
 - `token-cache.bin`：DPAPI 加密后的 access token 和 refresh token
 - `logs\auth.log`：预留的认证日志位置
 - `logs\audit.log`：JSON Lines 操作审计日志
+
+查询审计日志：
+
+```text
+outlookctl audit list --limit 20
+outlookctl audit list --action mail. --json
+```
 
 ## 开发
 
