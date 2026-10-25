@@ -32,6 +32,8 @@ type PhysicalAddress struct {
 type Contact struct {
 	ID               string                `json:"id"`
 	DisplayName      string                `json:"displayName"`
+	GivenName        string                `json:"givenName,omitempty"`
+	Surname          string                `json:"surname,omitempty"`
 	EmailAddresses   []ContactEmailAddress `json:"emailAddresses"`
 	CompanyName      string                `json:"companyName"`
 	JobTitle         string                `json:"jobTitle"`
@@ -65,7 +67,7 @@ func ListContactsInFolder(ctx context.Context, accessToken, folderID string, top
 	}
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage,homeAddress,businessAddress,otherAddress")
+	query.Set("$select", "id,displayName,givenName,surname,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage,homeAddress,businessAddress,otherAddress")
 	query.Set("$orderby", "displayName")
 	endpoint := graphBaseURL + "/me/contacts?" + query.Encode()
 	if strings.TrimSpace(folderID) != "" {
@@ -294,7 +296,7 @@ func SearchContacts(ctx context.Context, accessToken, query string, top int) ([]
 	values := url.Values{}
 	values.Set("$filter", filter)
 	values.Set("$top", strconv.Itoa(top))
-	values.Set("$select", "id,displayName,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage,homeAddress,businessAddress,otherAddress")
+	values.Set("$select", "id,displayName,givenName,surname,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage,homeAddress,businessAddress,otherAddress")
 	values.Set("$orderby", "displayName")
 	endpoint := graphBaseURL + "/me/contacts?" + values.Encode()
 
@@ -484,6 +486,8 @@ func CopyContact(ctx context.Context, accessToken, contactID, destinationFolderI
 	}
 	input := ContactInput{
 		DisplayName:      contact.DisplayName,
+		GivenName:        contact.GivenName,
+		Surname:          contact.Surname,
 		CompanyName:      contact.CompanyName,
 		JobTitle:         contact.JobTitle,
 		MobilePhone:      contact.MobilePhone,
@@ -638,4 +642,59 @@ func SetContactPhoto(ctx context.Context, accessToken, contactID string, data []
 	}
 	audit.Log("contacts.photo.set", map[string]any{"contactId": contactID, "size": len(data)})
 	return nil
+}
+
+// ListContactsInFolderAll 分页读取指定联系人文件夹中的联系人，最多返回 max 个。
+func ListContactsInFolderAll(ctx context.Context, accessToken, folderID string, max int) ([]Contact, error) {
+	if max <= 0 {
+		max = 500
+	}
+	if max > 1000 {
+		max = 1000
+	}
+	pageSize := max
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	query := url.Values{}
+	query.Set("$top", strconv.Itoa(pageSize))
+	query.Set("$select", "id,displayName,givenName,surname,emailAddresses,companyName,jobTitle,mobilePhone,businessPhones,nickName,birthday,personalNotes,department,officeLocation,profession,businessHomePage,homeAddress,businessAddress,otherAddress")
+	query.Set("$orderby", "displayName")
+	nextURL := graphBaseURL + "/me/contacts?" + query.Encode()
+	if strings.TrimSpace(folderID) != "" {
+		nextURL = graphBaseURL + "/me/contactFolders/" + url.PathEscape(folderID) + "/contacts?" + query.Encode()
+	}
+	contacts := make([]Contact, 0, pageSize)
+	for nextURL != "" && len(contacts) < max {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("创建联系人分页请求失败: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Accept", "application/json")
+		resp, err := doGraphRequest(req)
+		if err != nil {
+			return nil, fmt.Errorf("调用 Graph 联系人分页失败: %w", err)
+		}
+		var result struct {
+			Value    []Contact `json:"value"`
+			NextLink string    `json:"@odata.nextLink"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("Graph 联系人分页返回异常状态: HTTP %d", resp.StatusCode)
+		}
+		if decodeErr != nil {
+			return nil, fmt.Errorf("解析 Graph 联系人分页失败: %w", decodeErr)
+		}
+		for _, contact := range result.Value {
+			if len(contacts) >= max {
+				break
+			}
+			contacts = append(contacts, contact)
+		}
+		nextURL = result.NextLink
+	}
+	return contacts, nil
 }

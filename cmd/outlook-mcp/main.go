@@ -21,9 +21,53 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/Kylineyes/outlook-manager/internal/auth"
+	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
 	"github.com/Kylineyes/outlook-manager/internal/store"
 )
+
+// newTool 创建带 MCP annotations 的 tool 定义。
+func newTool(name, description string) *mcp.Tool {
+	readOnly := isReadOnlyTool(name)
+	destructive := isDestructiveTool(name)
+	openWorld := name != "account_list"
+	return &mcp.Tool{
+		Name:        name,
+		Description: description,
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    readOnly,
+			DestructiveHint: &destructive,
+			OpenWorldHint:   &openWorld,
+			IdempotentHint:  readOnly,
+		},
+	}
+}
+
+func isReadOnlyTool(name string) bool {
+	switch name {
+	case "account_list", "mail_list", "mail_read", "mail_search", "mail_folders_list",
+		"mail_attachments_list", "mail_message_categories", "mail_rules_list",
+		"mail_master_categories_list", "calendar_list", "calendar_calendars_list",
+		"calendar_attachments_list", "calendar_attachment_get", "contacts_list",
+		"contacts_search", "contacts_folders_list", "contacts_photo_get":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDestructiveTool(name string) bool {
+	switch name {
+	case "mail_delete", "mail_permanent_delete", "mail_folder_delete",
+		"mail_rule_delete", "mail_rule_apply", "mail_master_category_delete",
+		"mail_draft_attachment_delete", "mail_draft_attachment_replace",
+		"calendar_delete", "calendar_cancel", "contacts_delete",
+		"contacts_permanent_delete", "contacts_folder_delete":
+		return true
+	default:
+		return false
+	}
+}
 
 // version 表示当前构建版本。
 // 默认值用于本地开发；正式发布时由 GitHub Actions 通过 -ldflags 注入 tag。
@@ -541,6 +585,38 @@ type calendarForwardArgs struct {
 	Account string   `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
 }
 
+// mailDraftAttachmentDeleteArgs 是 mail_draft_attachment_delete tool 的输入参数。
+type mailDraftAttachmentDeleteArgs struct {
+	ID           string `json:"id" jsonschema:"草稿 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"附件 ID"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// mailDraftAttachmentReplaceArgs 是 mail_draft_attachment_replace tool 的输入参数。
+type mailDraftAttachmentReplaceArgs struct {
+	ID           string `json:"id" jsonschema:"草稿 ID"`
+	AttachmentID string `json:"attachmentId" jsonschema:"旧附件 ID"`
+	File         string `json:"file" jsonschema:"新附件文件路径"`
+	Account      string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsExportArgs 是 contacts_export tool 的输入参数。
+type contactsExportArgs struct {
+	File    string `json:"file" jsonschema:"导出的 CSV 文件路径"`
+	Folder  string `json:"folder,omitempty" jsonschema:"联系人文件夹名称或 ID；不填时使用默认文件夹"`
+	Max     int    `json:"max,omitempty" jsonschema:"最多导出多少个联系人，默认 500"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
+// contactsImportArgs 是 contacts_import tool 的输入参数。
+type contactsImportArgs struct {
+	File    string `json:"file" jsonschema:"联系人 CSV 文件路径"`
+	Folder  string `json:"folder,omitempty" jsonschema:"目标联系人文件夹名称或 ID；不填时使用默认文件夹"`
+	Max     int    `json:"max,omitempty" jsonschema:"最多导入多少个联系人，默认 500"`
+	Confirm bool   `json:"confirm,omitempty" jsonschema:"确认实际创建联系人；不填时只 dry-run"`
+	Account string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID；不填时使用默认账号"`
+}
+
 // authStatusItem 是 auth_status tool 中单个账号的检查结果。
 type authStatusItem struct {
 	Username           string `json:"username"`
@@ -565,322 +641,138 @@ func main() {
 		Version: version,
 	}, nil)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "account_list",
-		Description: "列出本地已登录的 Outlook 账号档案，不包含 token",
-	}, accountListHandler)
+	mcp.AddTool(server, newTool("account_list", "列出本地已登录的 Outlook 账号档案，不包含 token"), accountListHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "auth_status",
-		Description: "检查本地 token 缓存，并尝试为每个账号静默刷新 access token",
-	}, authStatusHandler)
+	mcp.AddTool(server, newTool("auth_status", "检查本地 token 缓存，并尝试为每个账号静默刷新 access token"), authStatusHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_list",
-		Description: "读取指定账号或默认账号收件箱中的最新邮件",
-	}, mailListHandler)
+	mcp.AddTool(server, newTool("mail_list", "读取指定账号或默认账号收件箱中的最新邮件"), mailListHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_read",
-		Description: "根据邮件 ID 读取单封邮件详情",
-	}, mailReadHandler)
+	mcp.AddTool(server, newTool("mail_read", "根据邮件 ID 读取单封邮件详情"), mailReadHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_search",
-		Description: "使用关键字搜索邮件",
-	}, mailSearchHandler)
+	mcp.AddTool(server, newTool("mail_search", "使用关键字搜索邮件"), mailSearchHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_send",
-		Description: "发送一封邮件",
-	}, mailSendHandler)
+	mcp.AddTool(server, newTool("mail_send", "发送一封邮件"), mailSendHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_folders_list",
-		Description: "列出邮件文件夹",
-	}, mailFoldersHandler)
+	mcp.AddTool(server, newTool("mail_folders_list", "列出邮件文件夹"), mailFoldersHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_folder_create",
-		Description: "创建邮件文件夹",
-	}, mailFolderCreateHandler)
+	mcp.AddTool(server, newTool("mail_folder_create", "创建邮件文件夹"), mailFolderCreateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_folder_rename",
-		Description: "重命名邮件文件夹",
-	}, mailFolderRenameHandler)
+	mcp.AddTool(server, newTool("mail_folder_rename", "重命名邮件文件夹"), mailFolderRenameHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_folder_delete",
-		Description: "删除邮件文件夹",
-	}, mailFolderDeleteHandler)
+	mcp.AddTool(server, newTool("mail_folder_delete", "删除邮件文件夹"), mailFolderDeleteHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_flag",
-		Description: "设置邮件旗标",
-	}, mailFlagHandler)
+	mcp.AddTool(server, newTool("mail_flag", "设置邮件旗标"), mailFlagHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_unflag",
-		Description: "取消邮件旗标",
-	}, mailUnflagHandler)
+	mcp.AddTool(server, newTool("mail_unflag", "取消邮件旗标"), mailUnflagHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_set_importance",
-		Description: "设置邮件重要性",
-	}, mailImportanceHandler)
+	mcp.AddTool(server, newTool("mail_set_importance", "设置邮件重要性"), mailImportanceHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_message_categories",
-		Description: "列出单封邮件的类别",
-	}, mailMessageCategoriesHandler)
+	mcp.AddTool(server, newTool("mail_message_categories", "列出单封邮件的类别"), mailMessageCategoriesHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_category_add",
-		Description: "给邮件添加类别",
-	}, mailCategoryAddHandler)
+	mcp.AddTool(server, newTool("mail_category_add", "给邮件添加类别"), mailCategoryAddHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_category_remove",
-		Description: "从邮件移除类别",
-	}, mailCategoryRemoveHandler)
+	mcp.AddTool(server, newTool("mail_category_remove", "从邮件移除类别"), mailCategoryRemoveHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_move",
-		Description: "把邮件移动到指定文件夹",
-	}, mailMoveHandler)
+	mcp.AddTool(server, newTool("mail_move", "把邮件移动到指定文件夹"), mailMoveHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_delete",
-		Description: "删除邮件（移动到已删除邮件）",
-	}, mailDeleteHandler)
+	mcp.AddTool(server, newTool("mail_delete", "删除邮件（移动到已删除邮件）"), mailDeleteHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_attachments_list",
-		Description: "列出邮件附件",
-	}, mailAttachmentsHandler)
+	mcp.AddTool(server, newTool("mail_attachments_list", "列出邮件附件"), mailAttachmentsHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_attachment_save",
-		Description: "下载并保存邮件附件到本地文件",
-	}, mailAttachmentSaveHandler)
+	mcp.AddTool(server, newTool("mail_attachment_save", "下载并保存邮件附件到本地文件"), mailAttachmentSaveHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_reply",
-		Description: "回复邮件",
-	}, mailReplyHandler)
+	mcp.AddTool(server, newTool("mail_reply", "回复邮件"), mailReplyHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_reply_all",
-		Description: "回复全部收件人",
-	}, mailReplyAllHandler)
+	mcp.AddTool(server, newTool("mail_reply_all", "回复全部收件人"), mailReplyAllHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_forward",
-		Description: "转发邮件",
-	}, mailForwardHandler)
+	mcp.AddTool(server, newTool("mail_forward", "转发邮件"), mailForwardHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_draft_create",
-		Description: "创建草稿邮件",
-	}, mailDraftCreateHandler)
+	mcp.AddTool(server, newTool("mail_draft_create", "创建草稿邮件"), mailDraftCreateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_drafts_list",
-		Description: "列出草稿邮件",
-	}, mailDraftsHandler)
+	mcp.AddTool(server, newTool("mail_drafts_list", "列出草稿邮件"), mailDraftsHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_draft_send",
-		Description: "发送草稿邮件",
-	}, mailDraftSendHandler)
+	mcp.AddTool(server, newTool("mail_draft_send", "发送草稿邮件"), mailDraftSendHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_mark_read",
-		Description: "把指定邮件标记为已读",
-	}, mailMarkReadHandler)
+	mcp.AddTool(server, newTool("mail_mark_read", "把指定邮件标记为已读"), mailMarkReadHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_mark_unread",
-		Description: "把指定邮件标记为未读",
-	}, mailMarkUnreadHandler)
+	mcp.AddTool(server, newTool("mail_mark_unread", "把指定邮件标记为未读"), mailMarkUnreadHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_list",
-		Description: "读取未来指定天数内的日历事件",
-	}, calendarListHandler)
+	mcp.AddTool(server, newTool("calendar_list", "读取未来指定天数内的日历事件"), calendarListHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_list",
-		Description: "读取联系人列表",
-	}, contactsListHandler)
+	mcp.AddTool(server, newTool("contacts_list", "读取联系人列表"), contactsListHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_create",
-		Description: "创建日历事件",
-	}, calendarCreateHandler)
+	mcp.AddTool(server, newTool("calendar_create", "创建日历事件"), calendarCreateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_update",
-		Description: "更新日历事件",
-	}, calendarUpdateHandler)
+	mcp.AddTool(server, newTool("calendar_update", "更新日历事件"), calendarUpdateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_delete",
-		Description: "删除日历事件",
-	}, calendarDeleteHandler)
+	mcp.AddTool(server, newTool("calendar_delete", "删除日历事件"), calendarDeleteHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_create",
-		Description: "创建联系人",
-	}, contactsCreateHandler)
+	mcp.AddTool(server, newTool("contacts_create", "创建联系人"), contactsCreateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_update",
-		Description: "更新联系人",
-	}, contactsUpdateHandler)
+	mcp.AddTool(server, newTool("contacts_update", "更新联系人"), contactsUpdateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_delete",
-		Description: "删除联系人",
-	}, contactsDeleteHandler)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_search",
-		Description: "按显示名称前缀搜索联系人",
-	}, contactsSearchHandler)
+	mcp.AddTool(server, newTool("contacts_delete", "删除联系人"), contactsDeleteHandler)
+	mcp.AddTool(server, newTool("contacts_search", "按显示名称前缀搜索联系人"), contactsSearchHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_folders_list",
-		Description: "列出联系人文件夹",
-	}, contactsFoldersHandler)
+	mcp.AddTool(server, newTool("contacts_folders_list", "列出联系人文件夹"), contactsFoldersHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_folder_create",
-		Description: "创建联系人文件夹",
-	}, contactsFolderCreateHandler)
+	mcp.AddTool(server, newTool("contacts_folder_create", "创建联系人文件夹"), contactsFolderCreateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_folder_delete",
-		Description: "删除联系人文件夹",
-	}, contactsFolderDeleteHandler)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_rules_list",
-		Description: "列出收件箱规则",
-	}, mailRulesHandler)
+	mcp.AddTool(server, newTool("contacts_folder_delete", "删除联系人文件夹"), contactsFolderDeleteHandler)
+	mcp.AddTool(server, newTool("mail_rules_list", "列出收件箱规则"), mailRulesHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_rule_create",
-		Description: "创建收件箱规则",
-	}, mailRuleCreateHandler)
+	mcp.AddTool(server, newTool("mail_rule_create", "创建收件箱规则"), mailRuleCreateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_rule_delete",
-		Description: "删除收件箱规则",
-	}, mailRuleDeleteHandler)
+	mcp.AddTool(server, newTool("mail_rule_delete", "删除收件箱规则"), mailRuleDeleteHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_master_categories_list",
-		Description: "列出主类别",
-	}, mailMasterCategoriesHandler)
+	mcp.AddTool(server, newTool("mail_master_categories_list", "列出主类别"), mailMasterCategoriesHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_master_category_create",
-		Description: "创建主类别",
-	}, mailMasterCategoryCreateHandler)
+	mcp.AddTool(server, newTool("mail_master_category_create", "创建主类别"), mailMasterCategoryCreateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_master_category_delete",
-		Description: "删除主类别",
-	}, mailMasterCategoryDeleteHandler)
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_move",
-		Description: "把联系人移动到指定文件夹",
-	}, contactsMoveHandler)
+	mcp.AddTool(server, newTool("mail_master_category_delete", "删除主类别"), mailMasterCategoryDeleteHandler)
+	mcp.AddTool(server, newTool("contacts_move", "把联系人移动到指定文件夹"), contactsMoveHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_permanent_delete",
-		Description: "永久删除邮件",
-	}, mailPermanentDeleteHandler)
+	mcp.AddTool(server, newTool("mail_permanent_delete", "永久删除邮件"), mailPermanentDeleteHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_copy",
-		Description: "复制联系人到指定文件夹",
-	}, contactsCopyHandler)
+	mcp.AddTool(server, newTool("contacts_copy", "复制联系人到指定文件夹"), contactsCopyHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_calendars_list",
-		Description: "列出日历",
-	}, calendarCalendarsHandler)
+	mcp.AddTool(server, newTool("calendar_calendars_list", "列出日历"), calendarCalendarsHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_folder_rename",
-		Description: "重命名联系人文件夹",
-	}, contactsFolderRenameHandler)
+	mcp.AddTool(server, newTool("contacts_folder_rename", "重命名联系人文件夹"), contactsFolderRenameHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_draft_update",
-		Description: "更新草稿邮件",
-	}, mailDraftUpdateHandler)
+	mcp.AddTool(server, newTool("mail_draft_update", "更新草稿邮件"), mailDraftUpdateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_permanent_delete",
-		Description: "永久删除联系人",
-	}, contactsPermanentDeleteHandler)
+	mcp.AddTool(server, newTool("contacts_permanent_delete", "永久删除联系人"), contactsPermanentDeleteHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_photo_get",
-		Description: "读取联系人照片",
-	}, contactsPhotoGetHandler)
+	mcp.AddTool(server, newTool("contacts_photo_get", "读取联系人照片"), contactsPhotoGetHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "contacts_photo_set",
-		Description: "设置联系人照片",
-	}, contactsPhotoSetHandler)
+	mcp.AddTool(server, newTool("contacts_photo_set", "设置联系人照片"), contactsPhotoSetHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_attachments_list",
-		Description: "列出日历事件附件",
-	}, calendarAttachmentsHandler)
+	mcp.AddTool(server, newTool("calendar_attachments_list", "列出日历事件附件"), calendarAttachmentsHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_attachment_add",
-		Description: "给日历事件添加附件",
-	}, calendarAttachmentAddHandler)
+	mcp.AddTool(server, newTool("calendar_attachment_add", "给日历事件添加附件"), calendarAttachmentAddHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_attachment_get",
-		Description: "下载日历事件附件",
-	}, calendarAttachmentGetHandler)
+	mcp.AddTool(server, newTool("calendar_attachment_get", "下载日历事件附件"), calendarAttachmentGetHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_rule_update",
-		Description: "更新收件箱规则",
-	}, mailRuleUpdateHandler)
+	mcp.AddTool(server, newTool("mail_rule_update", "更新收件箱规则"), mailRuleUpdateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_master_category_update",
-		Description: "更新主类别颜色",
-	}, mailMasterCategoryUpdateHandler)
+	mcp.AddTool(server, newTool("mail_master_category_update", "更新主类别颜色"), mailMasterCategoryUpdateHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_cancel",
-		Description: "取消日历事件",
-	}, calendarCancelHandler)
+	mcp.AddTool(server, newTool("calendar_cancel", "取消日历事件"), calendarCancelHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_respond",
-		Description: "响应日历邀请",
-	}, calendarRespondHandler)
+	mcp.AddTool(server, newTool("calendar_respond", "响应日历邀请"), calendarRespondHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mail_rule_apply",
-		Description: "把收件箱规则回放到已有邮件，默认 dry-run",
-	}, mailRuleApplyHandler)
+	mcp.AddTool(server, newTool("mail_rule_apply", "把收件箱规则回放到已有邮件，默认 dry-run"), mailRuleApplyHandler)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "calendar_forward",
-		Description: "转发日历事件",
-	}, calendarForwardHandler)
+	mcp.AddTool(server, newTool("calendar_forward", "转发日历事件"), calendarForwardHandler)
+
+	mcp.AddTool(server, newTool("mail_draft_attachment_delete", "删除草稿附件"), mailDraftAttachmentDeleteHandler)
+
+	mcp.AddTool(server, newTool("mail_draft_attachment_replace", "替换草稿附件"), mailDraftAttachmentReplaceHandler)
+
+	mcp.AddTool(server, newTool("contacts_export", "导出联系人到 CSV"), contactsExportHandler)
+
+	mcp.AddTool(server, newTool("contacts_import", "从 CSV 导入联系人"), contactsImportHandler)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("outlook-mcp 运行失败: %v", err)
@@ -3384,6 +3276,202 @@ func calendarForwardHandler(ctx context.Context, req *mcp.CallToolRequest, args 
 		"account": selected.Username,
 		"eventId": args.ID,
 		"to":      args.To,
+	})
+}
+
+// mailDraftAttachmentDeleteHandler 删除草稿附件。
+func mailDraftAttachmentDeleteHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftAttachmentDeleteArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.AttachmentID) == "" {
+		return nil, nil, fmt.Errorf("草稿 ID 和附件 ID 不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := graph.DeleteDraftAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":      true,
+		"account":      selected.Username,
+		"draftId":      args.ID,
+		"attachmentId": args.AttachmentID,
+	})
+}
+
+// mailDraftAttachmentReplaceHandler 替换草稿附件。
+func mailDraftAttachmentReplaceHandler(ctx context.Context, req *mcp.CallToolRequest, args mailDraftAttachmentReplaceArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.ID) == "" || strings.TrimSpace(args.AttachmentID) == "" || strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("草稿 ID、旧附件 ID 和新附件文件不能为空")
+	}
+	attachments, err := graph.LoadMailAttachments([]string{args.File})
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(attachments) == 0 {
+		return nil, nil, fmt.Errorf("新附件文件不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachment, err := graph.ReplaceDraftAttachment(ctx, loginResult.AccessToken, args.ID, args.AttachmentID, attachments[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success":    true,
+		"account":    selected.Username,
+		"draftId":    args.ID,
+		"attachment": attachment,
+	})
+}
+
+// contactsExportHandler 导出联系人到 CSV。
+func contactsExportHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsExportArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("导出文件路径不能为空")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderID := ""
+	if strings.TrimSpace(args.Folder) != "" {
+		folderID, err = graph.ResolveContactFolderID(ctx, loginResult.AccessToken, args.Folder)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	contacts, err := graph.ListContactsInFolderAll(ctx, loginResult.AccessToken, folderID, args.Max)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := contactcsv.ExportFile(args.File, contacts); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{
+		"success": true,
+		"account": selected.Username,
+		"count":   len(contacts),
+		"file":    args.File,
+	})
+}
+
+// contactsImportHandler 从 CSV 导入联系人。
+func contactsImportHandler(ctx context.Context, req *mcp.CallToolRequest, args contactsImportArgs) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(args.File) == "" {
+		return nil, nil, fmt.Errorf("导入文件路径不能为空")
+	}
+	inputs, err := contactcsv.ReadFile(args.File)
+	if err != nil {
+		return nil, nil, err
+	}
+	max := args.Max
+	if max <= 0 {
+		max = 500
+	}
+	if max > 1000 {
+		max = 1000
+	}
+	if len(inputs) > max {
+		inputs = inputs[:max]
+	}
+	ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	selected, err := auth.SelectAccount(accounts, args.Account)
+	if err != nil {
+		return nil, nil, err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	folderID := ""
+	if strings.TrimSpace(args.Folder) != "" {
+		folderID, err = graph.ResolveContactFolderID(ctx, loginResult.AccessToken, args.Folder)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if !args.Confirm {
+		return jsonResult(map[string]any{
+			"success": true,
+			"account": selected.Username,
+			"dryRun":  true,
+			"count":   len(inputs),
+			"file":    args.File,
+		})
+	}
+	successCount := 0
+	failureCount := 0
+	failures := make([]string, 0)
+	for _, input := range inputs {
+		if _, err := graph.CreateContactInFolder(ctx, loginResult.AccessToken, folderID, input); err != nil {
+			failureCount++
+			failures = append(failures, fmt.Sprintf("%s: %v", input.DisplayName, err))
+			continue
+		}
+		successCount++
+	}
+	return jsonResult(map[string]any{
+		"success":  true,
+		"account":  selected.Username,
+		"dryRun":   false,
+		"imported": successCount,
+		"failed":   failureCount,
+		"failures": failures,
+		"file":     args.File,
 	})
 }
 

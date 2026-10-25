@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Kylineyes/outlook-manager/internal/auth"
+	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
 	"github.com/Kylineyes/outlook-manager/internal/store"
 )
@@ -105,13 +106,13 @@ func printGroupUsage(group string) {
 		fmt.Fprintln(os.Stdout, "用法: outlookctl account <list|use>")
 	case "mail":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl mail <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
 	case "calendar":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl calendar <子命令> [options]")
 		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, create, update, delete, cancel, respond")
 	case "contacts":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl contacts <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import")
 	}
 }
 
@@ -353,6 +354,10 @@ func runMail(args []string) error {
 		return runMailDraftSend(args[1:])
 	case "draft-update":
 		return runMailDraftUpdate(args[1:])
+	case "draft-attachment-delete":
+		return runMailDraftAttachmentDelete(args[1:])
+	case "draft-attachment-replace":
+		return runMailDraftAttachmentReplace(args[1:])
 	case "folder-create":
 		return runMailFolderCreate(args[1:])
 	case "folder-rename":
@@ -1984,6 +1989,10 @@ func runContacts(args []string) error {
 		return runContactsMove(args[1:])
 	case "copy":
 		return runContactsCopy(args[1:])
+	case "export":
+		return runContactsExport(args[1:])
+	case "import":
+		return runContactsImport(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
@@ -3929,6 +3938,221 @@ func runCalendarForward(args []string) error {
 	return nil
 }
 
+// runMailDraftAttachmentDelete 删除草稿附件。
+func runMailDraftAttachmentDelete(args []string) error {
+	fs := flag.NewFlagSet("mail draft-attachment-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "附件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" {
+		return errors.New("用法: outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteDraftAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿附件已删除: %s\n", *attachmentIDFlag)
+	return nil
+}
+
+// runMailDraftAttachmentReplace 替换草稿附件。
+func runMailDraftAttachmentReplace(args []string) error {
+	fs := flag.NewFlagSet("mail draft-attachment-replace", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "旧附件 ID")
+	fileFlag := fs.String("file", "", "新附件文件路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file <新附件>")
+	}
+	attachments, err := graph.LoadMailAttachments([]string{*fileFlag})
+	if err != nil {
+		return err
+	}
+	if len(attachments) == 0 {
+		return errors.New("新附件文件不能为空")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachment, err := graph.ReplaceDraftAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag, attachments[0])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿附件已替换: %s\n", attachment.Name)
+	fmt.Fprintf(os.Stdout, "新附件 ID: %s\n", attachment.ID)
+	return nil
+}
+
+// runContactsExport 导出联系人到 CSV。
+func runContactsExport(args []string) error {
+	fs := flag.NewFlagSet("contacts export", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	outFlag := fs.String("out", "", "导出的 CSV 文件路径")
+	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
+	maxFlag := fs.Int("max", 500, "最多导出多少个联系人，范围 1-1000")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*outFlag) == "" {
+		return errors.New("用法: outlookctl contacts export --out <CSV文件> [--folder <文件夹>] [--max 500]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID := ""
+	if strings.TrimSpace(*folderFlag) != "" {
+		folderID, err = graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if err != nil {
+			return err
+		}
+	}
+	contacts, err := graph.ListContactsInFolderAll(ctx, loginResult.AccessToken, folderID, *maxFlag)
+	if err != nil {
+		return err
+	}
+	if err := contactcsv.ExportFile(*outFlag, contacts); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已导出: %d\n", len(contacts))
+	fmt.Fprintf(os.Stdout, "文件: %s\n", *outFlag)
+	return nil
+}
+
+// runContactsImport 从 CSV 导入联系人。
+func runContactsImport(args []string) error {
+	fs := flag.NewFlagSet("contacts import", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fileFlag := fs.String("file", "", "联系人 CSV 文件路径")
+	folderFlag := fs.String("folder", "", "目标联系人文件夹名称或 ID；不填时使用默认文件夹")
+	maxFlag := fs.Int("max", 500, "最多导入多少个联系人，范围 1-1000")
+	confirmFlag := fs.Bool("confirm", false, "确认实际创建联系人；不填时只 dry-run")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl contacts import --file <CSV文件> [--folder <文件夹>] [--max 500] [--confirm]")
+	}
+	inputs, err := contactcsv.ReadFile(*fileFlag)
+	if err != nil {
+		return err
+	}
+	if *maxFlag <= 0 {
+		*maxFlag = 500
+	}
+	if *maxFlag > 1000 {
+		*maxFlag = 1000
+	}
+	if len(inputs) > *maxFlag {
+		inputs = inputs[:*maxFlag]
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID := ""
+	if strings.TrimSpace(*folderFlag) != "" {
+		folderID, err = graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if err != nil {
+			return err
+		}
+	}
+	if !*confirmFlag {
+		fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+		fmt.Fprintf(os.Stdout, "待导入联系人: %d\n", len(inputs))
+		fmt.Fprintln(os.Stdout, "这是 dry-run，未创建任何联系人；确认后加 --confirm 执行")
+		return nil
+	}
+	successCount := 0
+	failureCount := 0
+	for _, input := range inputs {
+		if _, err := graph.CreateContactInFolder(ctx, loginResult.AccessToken, folderID, input); err != nil {
+			failureCount++
+			fmt.Fprintf(os.Stderr, "导入失败 (%s): %v\n", input.DisplayName, err)
+			continue
+		}
+		successCount++
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "导入成功: %d\n", successCount)
+	fmt.Fprintf(os.Stdout, "导入失败: %d\n", failureCount)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3976,6 +4200,10 @@ func printUsage() {
   outlookctl contacts photo-set --id <联系人ID> --file <文件>  上传联系人照片
   outlookctl contacts move --id <联系人ID> --folder <文件夹>  移动联系人
   outlookctl contacts copy --id <联系人ID> --folder <文件夹>  复制联系人
+  outlookctl contacts export --out <CSV文件>  导出联系人
+  outlookctl contacts import --file <CSV文件> [--confirm]  导入联系人
+  outlookctl contacts export --out <CSV文件>  导出联系人
+  outlookctl contacts import --file <CSV文件> [--confirm]  导入联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件
@@ -3983,6 +4211,10 @@ func printUsage() {
   outlookctl mail drafts                     列出草稿
   outlookctl mail draft-send <draft-id>      发送草稿
   outlookctl mail draft-update --id <草稿ID>  更新草稿
+  outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>  删除草稿附件
+  outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file <文件>  替换草稿附件
+  outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>  删除草稿附件
+  outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file <文件>  替换草稿附件
   outlookctl mail folder-create --name <名称>  创建文件夹
   outlookctl mail folder-rename <id> --name <名称>  重命名文件夹
   outlookctl mail folder-delete <id>         删除文件夹
