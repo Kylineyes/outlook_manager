@@ -634,3 +634,47 @@ func RespondCalendarEvent(ctx context.Context, accessToken, eventID, response, c
 	audit.Log("calendar.respond", map[string]any{"eventId": eventID, "response": response})
 	return nil
 }
+
+// ForwardCalendarEvent 把日历事件转发给指定收件人。
+func ForwardCalendarEvent(ctx context.Context, accessToken, eventID, comment string, attendees []string) error {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return fmt.Errorf("事件 ID 不能为空")
+	}
+	recipients, err := buildRecipients(attendees, "转发收件人")
+	if err != nil {
+		return err
+	}
+	if len(recipients) == 0 {
+		return fmt.Errorf("至少需要一个转发收件人")
+	}
+	payload := map[string]any{
+		"toRecipients": recipients,
+	}
+	if strings.TrimSpace(comment) != "" {
+		payload["comment"] = strings.TrimSpace(comment)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化转发日历事件请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/forward"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建转发日历事件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 转发日历事件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 转发日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	audit.Log("calendar.forward", map[string]any{"eventId": eventID, "recipientCount": len(recipients)})
+	return nil
+}

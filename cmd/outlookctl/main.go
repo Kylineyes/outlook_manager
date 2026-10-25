@@ -1863,6 +1863,8 @@ func runCalendar(args []string) error {
 		return runCalendarCancel(args[1:])
 	case "respond":
 		return runCalendarRespond(args[1:])
+	case "forward":
+		return runCalendarForward(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 calendar 子命令: %s", args[0])
@@ -3887,6 +3889,46 @@ func runCalendarRespond(args []string) error {
 	return nil
 }
 
+// runCalendarForward 转发日历事件。
+func runCalendarForward(args []string) error {
+	fs := flag.NewFlagSet("calendar forward", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	toFlag := fs.String("to", "", "转发收件人，多个用逗号分隔")
+	commentFlag := fs.String("comment", "", "转发说明")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || len(splitAddresses(*toFlag)) == 0 {
+		return errors.New("用法: outlookctl calendar forward --id <事件ID> --to <邮箱> [--comment <说明>]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.ForwardCalendarEvent(ctx, loginResult.AccessToken, *idFlag, *commentFlag, splitAddresses(*toFlag)); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历事件已转发: %s\n", *idFlag)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3919,6 +3961,7 @@ func printUsage() {
   outlookctl calendar delete --id <事件ID>  删除事件
   outlookctl calendar cancel --id <事件ID>  取消事件
   outlookctl calendar respond --id <事件ID> --response accept  响应日历邀请
+  outlookctl calendar forward --id <事件ID> --to <邮箱>  转发日历事件
   outlookctl contacts list --top 50          查看联系人
   outlookctl contacts search --query <关键字>  搜索联系人
   outlookctl contacts folders               列出联系人文件夹
