@@ -26,6 +26,7 @@ type Message struct {
 	From             MessageFrom `json:"from"`
 	ToRecipients     []Recipient `json:"toRecipients,omitempty"`
 	CcRecipients     []Recipient `json:"ccRecipients,omitempty"`
+	Categories       []string    `json:"categories,omitempty"`
 }
 
 // MessageFrom 表示邮件的发件人信息。

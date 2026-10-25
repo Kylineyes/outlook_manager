@@ -87,6 +87,8 @@ func run(args []string) error {
 		return runAccount(args[1:])
 	case "mail":
 		return runMail(args[1:])
+	case "mailbox":
+		return runMailbox(args[1:])
 	case "audit":
 		return runAudit(args[1:])
 	case "doctor":
@@ -112,7 +114,7 @@ func printGroupUsage(group string) {
 		fmt.Fprintln(os.Stdout, "用法: outlookctl account <list|use>")
 	case "mail":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl mail <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, query, view, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
 	case "calendar":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl calendar <子命令> [options]")
 		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, attachment-delete, attachment-replace, attachment-bulk-delete, create, update, delete, cancel, respond")
@@ -121,6 +123,9 @@ func printGroupUsage(group string) {
 		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import, bulk-delete")
 	case "audit":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list>")
+	case "mailbox":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl mailbox <settings|auto-reply|timezone>")
+		fmt.Fprintln(os.Stdout, "子命令: settings, auto-reply get/set, timezone get/set")
 	}
 }
 
@@ -378,6 +383,10 @@ func runMail(args []string) error {
 		return runMailList(args[1:])
 	case "search":
 		return runMailSearch(args[1:])
+	case "query":
+		return runMailQuery(args[1:])
+	case "view":
+		return runMailView(args[1:])
 	case "send":
 		return runMailSend(args[1:])
 	case "read":
@@ -4689,10 +4698,18 @@ func printUsage() {
   outlookctl auth status                   验证本地 token 缓存和静默刷新
   outlookctl account list                  查看本地账号档案
   outlookctl account use <email>           切换默认账号
+  outlookctl mailbox settings             查看邮箱设置
+  outlookctl mailbox auto-reply get       查看自动回复
+  outlookctl mailbox auto-reply set       设置自动回复
+  outlookctl mailbox timezone get         查看时区
+  outlookctl mailbox timezone set         设置时区
   outlookctl doctor                        执行环境与账号诊断
   outlookctl audit list [--limit 50]       查询本地审计日志
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail search --query <关键字>       搜索邮件
+  outlookctl mail query --from <邮箱> --unread --has-attachment --after 2026-10-01  高级邮件查询
+  outlookctl mail view save <名称> --from <邮箱> --unread  保存邮件视图
+  outlookctl mail view run <名称>                    运行邮件视图
   outlookctl mail send --to <邮箱> ...          发送邮件
   outlookctl mail read <message-id>         读取单封邮件详情
   outlookctl mail mark-read <message-id>    标记邮件为已读
