@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"io"
 	"net/http"
 	"net/url"
@@ -30,21 +31,28 @@ type EventOrganizer struct {
 	EmailAddress EmailAddress `json:"emailAddress"`
 }
 
+// EventResponseStatus 表示参与人对日历事件的响应状态。
+type EventResponseStatus struct {
+	Response string `json:"response,omitempty"`
+	Time     string `json:"time,omitempty"`
+}
+
 // CalendarEvent 表示一个日历事件。
 type CalendarEvent struct {
-	ID          string           `json:"id"`
-	Subject     string           `json:"subject"`
-	Start       DateTimeTimeZone `json:"start"`
-	End         DateTimeTimeZone `json:"end"`
-	Location    EventLocation    `json:"location"`
-	Organizer   EventOrganizer   `json:"organizer"`
-	IsAllDay    bool             `json:"isAllDay"`
-	WebLink     string           `json:"webLink"`
-	BodyPreview string           `json:"bodyPreview"`
-	Categories  []string         `json:"categories,omitempty"`
-	ShowAs      string           `json:"showAs,omitempty"`
-	Importance  string           `json:"importance,omitempty"`
-	Sensitivity string           `json:"sensitivity,omitempty"`
+	ID             string               `json:"id"`
+	Subject        string               `json:"subject"`
+	Start          DateTimeTimeZone     `json:"start"`
+	End            DateTimeTimeZone     `json:"end"`
+	Location       EventLocation        `json:"location"`
+	Organizer      EventOrganizer       `json:"organizer"`
+	IsAllDay       bool                 `json:"isAllDay"`
+	WebLink        string               `json:"webLink"`
+	BodyPreview    string               `json:"bodyPreview"`
+	Categories     []string             `json:"categories,omitempty"`
+	ShowAs         string               `json:"showAs,omitempty"`
+	Importance     string               `json:"importance,omitempty"`
+	Sensitivity    string               `json:"sensitivity,omitempty"`
+	ResponseStatus *EventResponseStatus `json:"responseStatus,omitempty"`
 }
 
 // ListCalendarEvents 读取默认日历在指定时间范围内的事件。
@@ -65,7 +73,7 @@ func ListCalendarEventsInCalendar(ctx context.Context, accessToken, calendarID s
 	query.Set("startDateTime", start.UTC().Format(time.RFC3339))
 	query.Set("endDateTime", end.UTC().Format(time.RFC3339))
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity")
+	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity,responseStatus")
 	query.Set("$orderby", "start/dateTime")
 	endpoint := graphBaseURL + "/me/calendarView?" + query.Encode()
 	if strings.TrimSpace(calendarID) != "" {
@@ -296,6 +304,7 @@ func CreateCalendarEvent(ctx context.Context, accessToken string, input Calendar
 	if err := json.NewDecoder(resp.Body).Decode(&event); err != nil {
 		return nil, fmt.Errorf("解析创建日历事件响应失败: %w", err)
 	}
+	audit.Log("calendar.create", map[string]any{"eventId": event.ID, "subject": event.Subject})
 	return &event, nil
 }
 
@@ -335,6 +344,7 @@ func UpdateCalendarEvent(ctx context.Context, accessToken, eventID string, input
 	if err := json.NewDecoder(resp.Body).Decode(&event); err != nil {
 		return nil, fmt.Errorf("解析更新日历事件响应失败: %w", err)
 	}
+	audit.Log("calendar.update", map[string]any{"eventId": event.ID, "subject": event.Subject})
 	return &event, nil
 }
 
@@ -360,6 +370,7 @@ func DeleteCalendarEvent(ctx context.Context, accessToken, eventID string) error
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 删除日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("calendar.delete", map[string]any{"eventId": eventID})
 	return nil
 }
 
@@ -466,8 +477,14 @@ func AddCalendarEventAttachment(ctx context.Context, accessToken, eventID string
 	if eventID == "" {
 		return nil, fmt.Errorf("事件 ID 不能为空")
 	}
-	if strings.TrimSpace(attachment.Name) == "" || len(attachment.ContentBytes) == 0 {
-		return nil, fmt.Errorf("附件名称和内容不能为空")
+	if strings.TrimSpace(attachment.Name) == "" {
+		return nil, fmt.Errorf("附件名称不能为空")
+	}
+	if attachment.Path != "" && attachment.Size > simpleAttachmentLimit {
+		return addLargeCalendarEventAttachment(ctx, accessToken, eventID, attachment)
+	}
+	if len(attachment.ContentBytes) == 0 {
+		return nil, fmt.Errorf("附件内容不能为空")
 	}
 	contentType := strings.TrimSpace(attachment.ContentType)
 	if contentType == "" {
@@ -504,6 +521,7 @@ func AddCalendarEventAttachment(ctx context.Context, accessToken, eventID string
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("解析 Graph 添加日历附件响应失败: %w", err)
 	}
+	audit.Log("calendar.attachment.add", map[string]any{"eventId": eventID, "attachmentId": result.ID, "size": result.Size})
 	return &result, nil
 }
 
@@ -567,6 +585,7 @@ func CancelCalendarEvent(ctx context.Context, accessToken, eventID, comment stri
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 取消日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("calendar.cancel", map[string]any{"eventId": eventID})
 	return nil
 }
 
@@ -613,5 +632,95 @@ func RespondCalendarEvent(ctx context.Context, accessToken, eventID, response, c
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 日历响应返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("calendar.respond", map[string]any{"eventId": eventID, "response": response})
 	return nil
+}
+
+// ForwardCalendarEvent 把日历事件转发给指定收件人。
+func ForwardCalendarEvent(ctx context.Context, accessToken, eventID, comment string, attendees []string) error {
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return fmt.Errorf("事件 ID 不能为空")
+	}
+	recipients, err := buildRecipients(attendees, "转发收件人")
+	if err != nil {
+		return err
+	}
+	if len(recipients) == 0 {
+		return fmt.Errorf("至少需要一个转发收件人")
+	}
+	payload := map[string]any{
+		"toRecipients": recipients,
+	}
+	if strings.TrimSpace(comment) != "" {
+		payload["comment"] = strings.TrimSpace(comment)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化转发日历事件请求失败: %w", err)
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/forward"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建转发日历事件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 转发日历事件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 转发日历事件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	audit.Log("calendar.forward", map[string]any{"eventId": eventID, "recipientCount": len(recipients)})
+	return nil
+}
+
+// DeleteCalendarEventAttachment 删除日历事件附件。
+func DeleteCalendarEventAttachment(ctx context.Context, accessToken, eventID, attachmentID string) error {
+	eventID = strings.TrimSpace(eventID)
+	attachmentID = strings.TrimSpace(attachmentID)
+	if eventID == "" || attachmentID == "" {
+		return fmt.Errorf("事件 ID 和附件 ID 不能为空")
+	}
+	endpoint := graphBaseURL + "/me/events/" + url.PathEscape(eventID) + "/attachments/" + url.PathEscape(attachmentID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("创建删除日历附件请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return fmt.Errorf("调用 Graph 删除日历附件失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("Graph 删除日历附件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	audit.Log("calendar.attachment.delete", map[string]any{"eventId": eventID, "attachmentId": attachmentID})
+	return nil
+}
+
+// ReplaceCalendarEventAttachment 替换日历事件附件：先添加新附件，再删除旧附件。
+func ReplaceCalendarEventAttachment(ctx context.Context, accessToken, eventID, oldAttachmentID string, attachment MailAttachmentInput) (*CalendarEventAttachment, error) {
+	eventID = strings.TrimSpace(eventID)
+	oldAttachmentID = strings.TrimSpace(oldAttachmentID)
+	if eventID == "" || oldAttachmentID == "" {
+		return nil, fmt.Errorf("事件 ID 和旧附件 ID 不能为空")
+	}
+	newAttachment, err := AddCalendarEventAttachment(ctx, accessToken, eventID, attachment)
+	if err != nil {
+		return nil, err
+	}
+	if err := DeleteCalendarEventAttachment(ctx, accessToken, eventID, oldAttachmentID); err != nil {
+		return nil, fmt.Errorf("新附件已添加，但删除旧附件失败: %w", err)
+	}
+	audit.Log("calendar.attachment.replace", map[string]any{"eventId": eventID, "oldAttachmentId": oldAttachmentID, "newAttachmentId": newAttachment.ID})
+	return newAttachment, nil
 }

@@ -20,9 +20,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/auth"
+	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
 	"github.com/Kylineyes/outlook-manager/internal/store"
+	"github.com/Kylineyes/outlook-manager/internal/vcard"
 )
 
 // version 表示当前构建版本。
@@ -32,9 +35,38 @@ var version = "dev"
 // main 负责捕获错误并设置进程退出码。
 func main() {
 	if err := run(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
 		fmt.Fprintf(os.Stderr, "outlookctl: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// parseCommandFlags 解析子命令参数，并在 --help / -h 时输出该子命令的参数列表。
+func parseCommandFlags(fs *flag.FlagSet, args []string) error {
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stdout, "用法: outlookctl %s [options]\n\n选项:\n", fs.Name())
+		fs.SetOutput(os.Stdout)
+		fs.PrintDefaults()
+	}
+	return fs.Parse(args)
+}
+
+// helpRequested 判断参数中是否包含 --help 或 -h。
+func helpRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	return false
+}
+
+// printHelpAndReturn 输出子命令用法并返回 flag.ErrHelp，让 main 以成功状态退出。
+func printHelpAndReturn(usage string) error {
+	fmt.Fprintln(os.Stdout, usage)
+	return flag.ErrHelp
 }
 
 // run 根据第一个参数分发子命令。
@@ -55,6 +87,12 @@ func run(args []string) error {
 		return runAccount(args[1:])
 	case "mail":
 		return runMail(args[1:])
+	case "mailbox":
+		return runMailbox(args[1:])
+	case "audit":
+		return runAudit(args[1:])
+	case "doctor":
+		return runDoctor(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(os.Stdout, "outlookctl %s\n", version)
 		return nil
@@ -67,10 +105,88 @@ func run(args []string) error {
 	}
 }
 
+// printGroupUsage 输出一级子命令的帮助。
+func printGroupUsage(group string) {
+	switch group {
+	case "auth":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl auth <login|status>")
+	case "account":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl account <list|use>")
+	case "mail":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl mail <子命令> [options]")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, query, view, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
+	case "calendar":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl calendar <子命令> [options]")
+		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, attachment-delete, attachment-replace, attachment-bulk-delete, create, update, delete, cancel, respond")
+	case "contacts":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl contacts <子命令> [options]")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import, bulk-delete")
+	case "audit":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list>")
+	case "mailbox":
+		fmt.Fprintln(os.Stdout, "用法: outlookctl mailbox <settings|auto-reply|timezone>")
+		fmt.Fprintln(os.Stdout, "子命令: settings, auto-reply get/set, timezone get/set")
+	}
+}
+
+// runAudit 处理本地审计日志子命令。
+func runAudit(args []string) error {
+	if len(args) > 0 && helpRequested(args[:1]) {
+		printGroupUsage("audit")
+		return nil
+	}
+	if len(args) == 0 {
+		printGroupUsage("audit")
+		return errors.New("audit 需要指定子命令: list")
+	}
+	switch args[0] {
+	case "list":
+		return runAuditList(args[1:])
+	default:
+		printGroupUsage("audit")
+		return fmt.Errorf("未知 audit 子命令: %s", args[0])
+	}
+}
+
+// runAuditList 查询本地审计日志。
+func runAuditList(args []string) error {
+	fs := flag.NewFlagSet("audit list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	limitFlag := fs.Int("limit", 50, "最多返回多少条记录")
+	actionFlag := fs.String("action", "", "按 action 前缀过滤")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	entries, err := audit.Entries(*limitFlag, *actionFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			return fmt.Errorf("序列化审计日志失败: %w", err)
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	for _, entry := range entries {
+		timeText, _ := entry["time"].(string)
+		action, _ := entry["action"].(string)
+		data, _ := json.Marshal(entry)
+		fmt.Fprintf(os.Stdout, "%s | %s | %s\n", timeText, action, string(data))
+	}
+	return nil
+}
+
 // runAuth 处理 auth 子命令。
 func runAuth(args []string) error {
+	if len(args) > 0 && helpRequested(args[:1]) {
+		printGroupUsage("auth")
+		return nil
+	}
 	if len(args) == 0 {
-		printUsage()
+		printGroupUsage("auth")
 		return errors.New("auth 需要指定子命令: login 或 status")
 	}
 	switch args[0] {
@@ -188,8 +304,12 @@ func runAuthStatus() error {
 
 // runAccount 处理 account 子命令。
 func runAccount(args []string) error {
+	if len(args) > 0 && helpRequested(args[:1]) {
+		printGroupUsage("account")
+		return nil
+	}
 	if len(args) == 0 {
-		printUsage()
+		printGroupUsage("account")
 		return errors.New("account 需要指定子命令: list 或 use")
 	}
 	switch args[0] {
@@ -219,6 +339,9 @@ func runAccountList() error {
 
 // runAccountUse 切换默认账号。
 func runAccountUse(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl account use <email>")
+	}
 	if len(args) == 0 {
 		return errors.New("用法: outlookctl account use <email>")
 	}
@@ -247,8 +370,12 @@ func runAccountUse(args []string) error {
 
 // runMail 处理 mail 子命令。
 func runMail(args []string) error {
+	if len(args) > 0 && helpRequested(args[:1]) {
+		printGroupUsage("mail")
+		return nil
+	}
 	if len(args) == 0 {
-		printUsage()
+		printGroupUsage("mail")
 		return errors.New("mail 需要指定子命令: list")
 	}
 	switch args[0] {
@@ -256,6 +383,10 @@ func runMail(args []string) error {
 		return runMailList(args[1:])
 	case "search":
 		return runMailSearch(args[1:])
+	case "query":
+		return runMailQuery(args[1:])
+	case "view":
+		return runMailView(args[1:])
 	case "send":
 		return runMailSend(args[1:])
 	case "read":
@@ -266,6 +397,8 @@ func runMail(args []string) error {
 		return runMailSetRead(args[1:], false)
 	case "folders":
 		return runMailFolders(args[1:])
+	case "folder-tree":
+		return runMailFolderTree(args[1:])
 	case "move":
 		return runMailMove(args[1:])
 	case "delete":
@@ -290,6 +423,16 @@ func runMail(args []string) error {
 		return runMailDraftSend(args[1:])
 	case "draft-update":
 		return runMailDraftUpdate(args[1:])
+	case "draft-attachment-delete":
+		return runMailDraftAttachmentDelete(args[1:])
+	case "draft-attachment-replace":
+		return runMailDraftAttachmentReplace(args[1:])
+	case "draft-attachment-bulk-delete":
+		return runMailDraftAttachmentBulkDelete(args[1:])
+	case "bulk-move":
+		return runMailBulkMove(args[1:])
+	case "bulk-delete":
+		return runMailBulkDelete(args[1:])
 	case "folder-create":
 		return runMailFolderCreate(args[1:])
 	case "folder-rename":
@@ -342,7 +485,7 @@ func runMailList(args []string) error {
 	allFlag := fs.Bool("all", false, "分页拉取多页邮件")
 	maxFlag := fs.Int("max", 500, "全量拉取时的最大邮件数量，范围 1-1000")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 
@@ -469,6 +612,9 @@ func parseMessageTargetArgs(args []string, allowJSON bool) (messageTarget, error
 
 // runMailRead 读取单封邮件详情。
 func runMailRead(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail read <message-id> [--json] [--account <email>]")
+	}
 	target, err := parseMessageTargetArgs(args, true)
 	if err != nil {
 		return errors.New("用法: outlookctl mail read <message-id> [--json] [--account <email>]")
@@ -531,7 +677,7 @@ func runMailSearch(args []string) error {
 	folderFlag := fs.String("folder", "", "指定文件夹名称或 ID；不填时搜索全部文件夹")
 	topFlag := fs.Int("top", 10, "最多返回多少封邮件，范围 1-100")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*queryFlag) == "" {
@@ -623,7 +769,7 @@ func runMailSend(args []string) error {
 	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
 	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
 	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 
@@ -709,6 +855,9 @@ func splitAddresses(value string) []string {
 
 // runMailSetRead 修改单封邮件的已读状态。
 func runMailSetRead(args []string, isRead bool) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail mark-read|mark-unread <message-id> [--account <email>]")
+	}
 	target, err := parseMessageTargetArgs(args, false)
 	if err != nil {
 		return errors.New("用法: outlookctl mail mark-read|mark-unread <message-id> [--account <email>]")
@@ -753,7 +902,7 @@ func runMailFolders(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	topFlag := fs.Int("top", 50, "最多返回多少个文件夹，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 
@@ -807,6 +956,9 @@ func runMailFolders(args []string) error {
 
 // runMailMove 把邮件移动到指定文件夹。
 func runMailMove(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail move <message-id> --folder <文件夹> [--account <email>]")
+	}
 	var account, folder, messageID string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -878,6 +1030,9 @@ func runMailMove(args []string) error {
 // runMailDelete 删除邮件。
 // 当前使用 Graph 默认删除行为：邮件会被移动到已删除邮件文件夹。
 func runMailDelete(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail delete <message-id> [--account <email>]")
+	}
 	target, err := parseMessageTargetArgs(args, false)
 	if err != nil {
 		return errors.New("用法: outlookctl mail delete <message-id> [--account <email>]")
@@ -973,6 +1128,9 @@ func runMailAttachments(args []string) error {
 
 // runMailAttachmentSave 下载并保存指定附件。
 func runMailAttachmentSave(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail attachment-save <message-id> --attachment <id> --out <path> [--account <email>]")
+	}
 	var account, attachmentID, outputPath, messageID string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -1046,6 +1204,9 @@ func runMailAttachmentSave(args []string) error {
 
 // runMailReply 回复或回复全部邮件。
 func runMailReply(args []string, replyAll bool) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail reply|reply-all <message-id> --body <正文> [--account <email>]")
+	}
 	var account, body, messageID string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -1118,6 +1279,9 @@ func runMailReply(args []string, replyAll bool) error {
 
 // runMailForward 转发邮件。
 func runMailForward(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail forward <message-id> --to <邮箱> [--body <正文>] [--account <email>]")
+	}
 	var account, body, messageID string
 	var to []string
 	for i := 0; i < len(args); i++ {
@@ -1204,7 +1368,7 @@ func runMailDraftCreate(args []string) error {
 	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
 	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
 	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 
@@ -1271,7 +1435,7 @@ func runMailDrafts(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	topFlag := fs.Int("top", 10, "最多返回多少封草稿，范围 1-100")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 
@@ -1318,6 +1482,9 @@ func runMailDrafts(args []string) error {
 
 // runMailDraftSend 发送指定草稿。
 func runMailDraftSend(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail draft-send <draft-id> [--account <email>]")
+	}
 	target, err := parseMessageTargetArgs(args, false)
 	if err != nil {
 		return errors.New("用法: outlookctl mail draft-send <draft-id> [--account <email>]")
@@ -1358,7 +1525,7 @@ func runMailFolderCreate(args []string) error {
 	nameFlag := fs.String("name", "", "文件夹名称")
 	parentFlag := fs.String("parent", "", "父文件夹 ID，默认创建在根目录")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*nameFlag) == "" {
@@ -1397,6 +1564,9 @@ func runMailFolderCreate(args []string) error {
 
 // runMailFolderRename 重命名邮件文件夹。
 func runMailFolderRename(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail folder-rename <文件夹ID> --name <新名称> [--account <email>]")
+	}
 	var account, name, folderID string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -1460,6 +1630,9 @@ func runMailFolderRename(args []string) error {
 
 // runMailFolderDelete 删除邮件文件夹。
 func runMailFolderDelete(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail folder-delete <文件夹ID> [--account <email>]")
+	}
 	target, err := parseMessageTargetArgs(args, false)
 	if err != nil {
 		return errors.New("用法: outlookctl mail folder-delete <文件夹ID> [--account <email>]")
@@ -1495,6 +1668,9 @@ func runMailFolderDelete(args []string) error {
 
 // runMailSetFlag 设置或取消邮件旗标。
 func runMailSetFlag(args []string, flagged bool) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail flag|unflag <message-id> [--account <email>]")
+	}
 	target, err := parseMessageTargetArgs(args, false)
 	if err != nil {
 		return errors.New("用法: outlookctl mail flag|unflag <message-id> [--account <email>]")
@@ -1534,6 +1710,9 @@ func runMailSetFlag(args []string, flagged bool) error {
 
 // runMailSetImportance 设置邮件重要性。
 func runMailSetImportance(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail importance <message-id> --level low|normal|high [--account <email>]")
+	}
 	var account, level, messageID string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -1597,6 +1776,9 @@ func runMailSetImportance(args []string) error {
 
 // runMailMessageCategories 列出单封邮件的类别。
 func runMailMessageCategories(args []string) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail message-categories <message-id> [--json] [--account <email>]")
+	}
 	target, err := parseMessageTargetArgs(args, true)
 	if err != nil {
 		return errors.New("用法: outlookctl mail message-categories <message-id> [--json] [--account <email>]")
@@ -1655,6 +1837,9 @@ func runMailCategoryRemove(args []string) error {
 
 // runMailCategoryChange 是添加或移除邮件类别的共用实现。
 func runMailCategoryChange(args []string, add bool) error {
+	if helpRequested(args) {
+		return printHelpAndReturn("用法: outlookctl mail category-add|category-remove <message-id> --category <名称> [--account <email>]")
+	}
 	var account, category, messageID string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -1729,8 +1914,12 @@ func runMailCategoryChange(args []string, add bool) error {
 
 // runCalendar 处理 calendar 子命令。
 func runCalendar(args []string) error {
+	if len(args) > 0 && helpRequested(args[:1]) {
+		printGroupUsage("calendar")
+		return nil
+	}
 	if len(args) == 0 {
-		printUsage()
+		printGroupUsage("calendar")
 		return errors.New("calendar 需要指定子命令: list")
 	}
 	switch args[0] {
@@ -1744,6 +1933,12 @@ func runCalendar(args []string) error {
 		return runCalendarAttachmentAdd(args[1:])
 	case "attachment-get":
 		return runCalendarAttachmentGet(args[1:])
+	case "attachment-delete":
+		return runCalendarAttachmentDelete(args[1:])
+	case "attachment-replace":
+		return runCalendarAttachmentReplace(args[1:])
+	case "attachment-bulk-delete":
+		return runCalendarAttachmentBulkDelete(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
@@ -1754,6 +1949,8 @@ func runCalendar(args []string) error {
 		return runCalendarCancel(args[1:])
 	case "respond":
 		return runCalendarRespond(args[1:])
+	case "forward":
+		return runCalendarForward(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 calendar 子命令: %s", args[0])
@@ -1769,7 +1966,7 @@ func runCalendarList(args []string) error {
 	daysFlag := fs.Int("days", 7, "查询未来多少天，范围 1-90")
 	topFlag := fs.Int("top", 50, "最多返回多少条事件，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if *daysFlag <= 0 {
@@ -1836,8 +2033,12 @@ func runCalendarList(args []string) error {
 
 // runContacts 处理 contacts 子命令。
 func runContacts(args []string) error {
+	if len(args) > 0 && helpRequested(args[:1]) {
+		printGroupUsage("contacts")
+		return nil
+	}
 	if len(args) == 0 {
-		printUsage()
+		printGroupUsage("contacts")
 		return errors.New("contacts 需要指定子命令: list")
 	}
 	switch args[0] {
@@ -1869,6 +2070,12 @@ func runContacts(args []string) error {
 		return runContactsMove(args[1:])
 	case "copy":
 		return runContactsCopy(args[1:])
+	case "export":
+		return runContactsExport(args[1:])
+	case "import":
+		return runContactsImport(args[1:])
+	case "bulk-delete":
+		return runContactsBulkDelete(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
@@ -1883,7 +2090,7 @@ func runContactsList(args []string) error {
 	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
 	topFlag := fs.Int("top", 50, "最多返回多少个联系人，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 
@@ -1981,7 +2188,7 @@ func runCalendarCreate(args []string) error {
 	showAsFlag := fs.String("show-as", "", "日程状态: free/tentative/busy/oof/workingElsewhere/unknown")
 	importanceFlag := fs.String("importance", "", "事件重要性: low/normal/high")
 	sensitivityFlag := fs.String("sensitivity", "", "事件敏感度: normal/personal/private/confidential")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*subjectFlag) == "" || strings.TrimSpace(*startFlag) == "" || strings.TrimSpace(*endFlag) == "" {
@@ -2065,7 +2272,7 @@ func runCalendarUpdate(args []string) error {
 	showAsFlag := fs.String("show-as", "", "日程状态: free/tentative/busy/oof/workingElsewhere/unknown")
 	importanceFlag := fs.String("importance", "", "事件重要性: low/normal/high")
 	sensitivityFlag := fs.String("sensitivity", "", "事件敏感度: normal/personal/private/confidential")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*subjectFlag) == "" || strings.TrimSpace(*startFlag) == "" || strings.TrimSpace(*endFlag) == "" {
@@ -2132,7 +2339,7 @@ func runCalendarDelete(args []string) error {
 	fs.SetOutput(os.Stderr)
 	idFlag := fs.String("id", "", "事件 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -2189,7 +2396,7 @@ func runContactsCreate(args []string) error {
 	homeAddressFlag := fs.String("home-address", "", "家庭地址，格式 street|city|state|postal|country")
 	businessAddressFlag := fs.String("business-address", "", "工作地址，格式 street|city|state|postal|country")
 	otherAddressFlag := fs.String("other-address", "", "其他地址，格式 street|city|state|postal|country")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*displayNameFlag) == "" {
@@ -2279,7 +2486,7 @@ func runContactsUpdate(args []string) error {
 	homeAddressFlag := fs.String("home-address", "", "家庭地址，格式 street|city|state|postal|country")
 	businessAddressFlag := fs.String("business-address", "", "工作地址，格式 street|city|state|postal|country")
 	otherAddressFlag := fs.String("other-address", "", "其他地址，格式 street|city|state|postal|country")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*displayNameFlag) == "" {
@@ -2341,7 +2548,7 @@ func runContactsDelete(args []string) error {
 	fs.SetOutput(os.Stderr)
 	idFlag := fs.String("id", "", "联系人 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -2382,7 +2589,7 @@ func runContactsSearch(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	topFlag := fs.Int("top", 20, "最多返回多少个联系人，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*queryFlag) == "" {
@@ -2439,7 +2646,7 @@ func runContactsFolders(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	topFlag := fs.Int("top", 50, "最多返回多少个文件夹，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -2487,7 +2694,7 @@ func runContactsFolderCreate(args []string) error {
 	nameFlag := fs.String("name", "", "文件夹名称")
 	parentFlag := fs.String("parent", "", "父文件夹 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*nameFlag) == "" {
@@ -2527,7 +2734,7 @@ func runContactsFolderDelete(args []string) error {
 	fs.SetOutput(os.Stderr)
 	idFlag := fs.String("id", "", "文件夹 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -2565,7 +2772,7 @@ func runMailRules(args []string) error {
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -2619,12 +2826,24 @@ func runMailRuleCreate(args []string) error {
 	deleteFlag := fs.Bool("delete", false, "删除邮件")
 	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
 	categoryFlag := fs.String("category", "", "给邮件添加类别，多个用逗号分隔")
+	bodyContainsFlag := fs.String("body-contains", "", "正文包含关键字，多个用逗号分隔")
+	bodyOrSubjectFlag := fs.String("body-or-subject-contains", "", "正文或主题包含关键字，多个用逗号分隔")
+	hasAttachmentsFlag := fs.Bool("has-attachments", false, "匹配带附件的邮件")
+	ruleImportanceFlag := fs.String("importance", "", "匹配邮件重要性: low/normal/high")
+	senderContainsFlag := fs.String("sender-contains", "", "发件人包含关键字，多个用逗号分隔")
+	recipientContainsFlag := fs.String("recipient-contains", "", "收件人包含关键字，多个用逗号分隔")
+	copyFlag := fs.String("copy-to", "", "复制到文件夹名称或 ID")
+	forwardFlag := fs.String("forward-to", "", "转发到邮箱，多个用逗号分隔")
+	redirectFlag := fs.String("redirect-to", "", "重定向到邮箱，多个用逗号分隔")
+	markImportanceFlag := fs.String("mark-importance", "", "设置邮件重要性: low/normal/high")
+	permanentDeleteFlag := fs.Bool("permanent-delete", false, "永久删除邮件")
 	disabledFlag := fs.Bool("disabled", false, "创建为禁用状态")
 	applyNowFlag := fs.Bool("apply-now", false, "创建后立即回放规则")
 	confirmApplyFlag := fs.Bool("confirm-apply", false, "确认实际修改已有邮件；不填时只 dry-run")
 	applyFolderFlag := fs.String("apply-folder", "", "回放规则的目标文件夹；不填时使用收件箱")
+	applyFoldersFlag := fs.String("apply-folders", "", "回放规则的目标文件夹列表，多个用逗号分隔")
 	applyMaxFlag := fs.Int("apply-max", 500, "回放时最多扫描多少封邮件")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*nameFlag) == "" {
@@ -2633,10 +2852,16 @@ func runMailRuleCreate(args []string) error {
 	from := splitAddresses(*fromFlag)
 	subjects := splitAddresses(*subjectFlag)
 	categories := splitAddresses(*categoryFlag)
-	if len(from) == 0 && len(subjects) == 0 {
+	bodyContains := splitAddresses(*bodyContainsFlag)
+	bodyOrSubjectContains := splitAddresses(*bodyOrSubjectFlag)
+	senderContains := splitAddresses(*senderContainsFlag)
+	recipientContains := splitAddresses(*recipientContainsFlag)
+	forwardTo := splitAddresses(*forwardFlag)
+	redirectTo := splitAddresses(*redirectFlag)
+	if len(from) == 0 && len(subjects) == 0 && len(bodyContains) == 0 && len(bodyOrSubjectContains) == 0 && !*hasAttachmentsFlag && strings.TrimSpace(*ruleImportanceFlag) == "" && len(senderContains) == 0 && len(recipientContains) == 0 {
 		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
 	}
-	if strings.TrimSpace(*moveFlag) == "" && len(categories) == 0 && !*markReadFlag && !*deleteFlag && !*stopFlag {
+	if strings.TrimSpace(*moveFlag) == "" && strings.TrimSpace(*copyFlag) == "" && len(categories) == 0 && len(forwardTo) == 0 && len(redirectTo) == 0 && !*markReadFlag && strings.TrimSpace(*markImportanceFlag) == "" && !*deleteFlag && !*permanentDeleteFlag && !*stopFlag {
 		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
 	}
 
@@ -2665,16 +2890,34 @@ func runMailRuleCreate(args []string) error {
 			return err
 		}
 	}
+	copyToFolder := strings.TrimSpace(*copyFlag)
+	if copyToFolder != "" {
+		copyToFolder, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, copyToFolder)
+		if err != nil {
+			return err
+		}
+	}
 	rule, err := graph.CreateMessageRule(ctx, loginResult.AccessToken, graph.MessageRuleInput{
-		DisplayName:         *nameFlag,
-		FromAddresses:       from,
-		SubjectContains:     subjects,
-		MoveToFolder:        moveToFolder,
-		MarkAsRead:          *markReadFlag,
-		Delete:              *deleteFlag,
-		AssignCategories:    categories,
-		StopProcessingRules: *stopFlag,
-		IsEnabled:           !*disabledFlag,
+		DisplayName:           *nameFlag,
+		FromAddresses:         from,
+		SubjectContains:       subjects,
+		MoveToFolder:          moveToFolder,
+		MarkAsRead:            *markReadFlag,
+		Delete:                *deleteFlag,
+		AssignCategories:      categories,
+		BodyContains:          bodyContains,
+		BodyOrSubjectContains: bodyOrSubjectContains,
+		HasAttachments:        *hasAttachmentsFlag,
+		Importance:            *ruleImportanceFlag,
+		SenderContains:        senderContains,
+		RecipientContains:     recipientContains,
+		CopyToFolder:          copyToFolder,
+		ForwardTo:             forwardTo,
+		RedirectTo:            redirectTo,
+		MarkImportance:        *markImportanceFlag,
+		PermanentDelete:       *permanentDeleteFlag,
+		StopProcessingRules:   *stopFlag,
+		IsEnabled:             !*disabledFlag,
 	})
 	if err != nil {
 		return err
@@ -2683,15 +2926,27 @@ func runMailRuleCreate(args []string) error {
 	fmt.Fprintf(os.Stdout, "规则已创建: %s\n", rule.DisplayName)
 	fmt.Fprintf(os.Stdout, "规则 ID: %s\n", rule.ID)
 	if *applyNowFlag {
-		folderID := "inbox"
-		if strings.TrimSpace(*applyFolderFlag) != "" {
-			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *applyFolderFlag)
-			if resolveErr != nil {
-				return resolveErr
+		folderIDs := make([]string, 0)
+		if strings.TrimSpace(*applyFoldersFlag) != "" {
+			for _, folder := range splitAddresses(*applyFoldersFlag) {
+				resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, folder)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				folderIDs = append(folderIDs, resolved)
 			}
-			folderID = resolved
+		} else {
+			folderID := "inbox"
+			if strings.TrimSpace(*applyFolderFlag) != "" {
+				resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *applyFolderFlag)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				folderID = resolved
+			}
+			folderIDs = append(folderIDs, folderID)
 		}
-		applyResult, applyErr := graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, *applyMaxFlag, *confirmApplyFlag)
+		applyResult, applyErr := graph.ApplyMessageRuleToFolders(ctx, loginResult.AccessToken, rule, folderIDs, *applyMaxFlag, *confirmApplyFlag)
 		if applyErr != nil {
 			return applyErr
 		}
@@ -2717,8 +2972,19 @@ func runMailRuleUpdate(args []string) error {
 	deleteFlag := fs.Bool("delete", false, "删除邮件")
 	stopFlag := fs.Bool("stop", false, "停止处理后续规则")
 	categoryFlag := fs.String("category", "", "给邮件添加类别，多个用逗号分隔")
+	bodyContainsFlag := fs.String("body-contains", "", "正文包含关键字，多个用逗号分隔")
+	bodyOrSubjectFlag := fs.String("body-or-subject-contains", "", "正文或主题包含关键字，多个用逗号分隔")
+	hasAttachmentsFlag := fs.Bool("has-attachments", false, "匹配带附件的邮件")
+	ruleImportanceFlag := fs.String("importance", "", "匹配邮件重要性: low/normal/high")
+	senderContainsFlag := fs.String("sender-contains", "", "发件人包含关键字，多个用逗号分隔")
+	recipientContainsFlag := fs.String("recipient-contains", "", "收件人包含关键字，多个用逗号分隔")
+	copyFlag := fs.String("copy-to", "", "复制到文件夹名称或 ID")
+	forwardFlag := fs.String("forward-to", "", "转发到邮箱，多个用逗号分隔")
+	redirectFlag := fs.String("redirect-to", "", "重定向到邮箱，多个用逗号分隔")
+	markImportanceFlag := fs.String("mark-importance", "", "设置邮件重要性: low/normal/high")
+	permanentDeleteFlag := fs.Bool("permanent-delete", false, "永久删除邮件")
 	disabledFlag := fs.Bool("disabled", false, "更新为禁用状态")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*nameFlag) == "" {
@@ -2727,10 +2993,16 @@ func runMailRuleUpdate(args []string) error {
 	from := splitAddresses(*fromFlag)
 	subjects := splitAddresses(*subjectFlag)
 	categories := splitAddresses(*categoryFlag)
-	if len(from) == 0 && len(subjects) == 0 {
+	bodyContains := splitAddresses(*bodyContainsFlag)
+	bodyOrSubjectContains := splitAddresses(*bodyOrSubjectFlag)
+	senderContains := splitAddresses(*senderContainsFlag)
+	recipientContains := splitAddresses(*recipientContainsFlag)
+	forwardTo := splitAddresses(*forwardFlag)
+	redirectTo := splitAddresses(*redirectFlag)
+	if len(from) == 0 && len(subjects) == 0 && len(bodyContains) == 0 && len(bodyOrSubjectContains) == 0 && !*hasAttachmentsFlag && strings.TrimSpace(*ruleImportanceFlag) == "" && len(senderContains) == 0 && len(recipientContains) == 0 {
 		return errors.New("至少需要 --from 或 --subject-contains 中的一个规则条件")
 	}
-	if strings.TrimSpace(*moveFlag) == "" && len(categories) == 0 && !*markReadFlag && !*deleteFlag && !*stopFlag {
+	if strings.TrimSpace(*moveFlag) == "" && strings.TrimSpace(*copyFlag) == "" && len(categories) == 0 && len(forwardTo) == 0 && len(redirectTo) == 0 && !*markReadFlag && strings.TrimSpace(*markImportanceFlag) == "" && !*deleteFlag && !*permanentDeleteFlag && !*stopFlag {
 		return errors.New("至少需要 --move-to、--mark-read、--delete 或 --stop 中的一个规则动作")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -2758,16 +3030,34 @@ func runMailRuleUpdate(args []string) error {
 			return err
 		}
 	}
+	copyToFolder := strings.TrimSpace(*copyFlag)
+	if copyToFolder != "" {
+		copyToFolder, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, copyToFolder)
+		if err != nil {
+			return err
+		}
+	}
 	rule, err := graph.UpdateMessageRule(ctx, loginResult.AccessToken, *idFlag, graph.MessageRuleInput{
-		DisplayName:         *nameFlag,
-		FromAddresses:       from,
-		SubjectContains:     subjects,
-		MoveToFolder:        moveToFolder,
-		MarkAsRead:          *markReadFlag,
-		Delete:              *deleteFlag,
-		AssignCategories:    categories,
-		StopProcessingRules: *stopFlag,
-		IsEnabled:           !*disabledFlag,
+		DisplayName:           *nameFlag,
+		FromAddresses:         from,
+		SubjectContains:       subjects,
+		MoveToFolder:          moveToFolder,
+		MarkAsRead:            *markReadFlag,
+		Delete:                *deleteFlag,
+		AssignCategories:      categories,
+		BodyContains:          bodyContains,
+		BodyOrSubjectContains: bodyOrSubjectContains,
+		HasAttachments:        *hasAttachmentsFlag,
+		Importance:            *ruleImportanceFlag,
+		SenderContains:        senderContains,
+		RecipientContains:     recipientContains,
+		CopyToFolder:          copyToFolder,
+		ForwardTo:             forwardTo,
+		RedirectTo:            redirectTo,
+		MarkImportance:        *markImportanceFlag,
+		PermanentDelete:       *permanentDeleteFlag,
+		StopProcessingRules:   *stopFlag,
+		IsEnabled:             !*disabledFlag,
 	})
 	if err != nil {
 		return err
@@ -2779,10 +3069,15 @@ func runMailRuleUpdate(args []string) error {
 }
 
 // printMessageRuleApplyResult 输出规则回放结果。
+// printMessageRuleApplyResult 输出规则回放结果。
 func printMessageRuleApplyResult(username string, result *graph.RuleApplyResult) {
+	folders := result.FolderIDs
+	if len(folders) == 0 && result.FolderID != "" {
+		folders = []string{result.FolderID}
+	}
 	fmt.Fprintf(os.Stdout, "账号: %s\n", username)
 	fmt.Fprintf(os.Stdout, "规则: %s\n", result.RuleName)
-	fmt.Fprintf(os.Stdout, "文件夹: %s\n", result.FolderID)
+	fmt.Fprintf(os.Stdout, "文件夹: %s\n", strings.Join(folders, ","))
 	fmt.Fprintf(os.Stdout, "扫描邮件: %d\n", result.Scanned)
 	fmt.Fprintf(os.Stdout, "匹配邮件: %d\n", result.Matched)
 	fmt.Fprintf(os.Stdout, "已应用: %d\n", result.Applied)
@@ -2792,10 +3087,11 @@ func printMessageRuleApplyResult(username string, result *graph.RuleApplyResult)
 		fmt.Fprintln(os.Stdout, "模式: 已实际应用")
 	}
 	for i, match := range result.Matches {
-		fmt.Fprintf(os.Stdout, "%d. %s | %s | %s\n", i+1, match.Subject, match.From, strings.Join(match.Actions, ","))
+		fmt.Fprintf(os.Stdout, "%d. %s | %s | %s | %s\n", i+1, match.Subject, match.From, match.FolderID, strings.Join(match.Actions, ","))
 	}
 }
 
+// runMailRuleApply 把已有收件箱规则回放到已有邮件。
 // runMailRuleApply 把已有收件箱规则回放到已有邮件。
 func runMailRuleApply(args []string) error {
 	fs := flag.NewFlagSet("mail rule-apply", flag.ContinueOnError)
@@ -2803,16 +3099,17 @@ func runMailRuleApply(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	idFlag := fs.String("id", "", "规则 ID")
 	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID；不填时使用收件箱")
-	maxFlag := fs.Int("max", 500, "最多扫描多少封邮件，范围 1-1000")
+	foldersFlag := fs.String("folders", "", "目标文件夹列表，多个用逗号分隔")
+	maxFlag := fs.Int("max", 500, "每个文件夹最多扫描多少封邮件，范围 1-1000")
 	confirmFlag := fs.Bool("confirm", false, "确认实际修改邮件；不填时只 dry-run")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
-		return errors.New("用法: outlookctl mail rule-apply --id <规则ID> [--folder <文件夹>] [--max 500] [--confirm]")
+		return errors.New("用法: outlookctl mail rule-apply --id <规则ID> [--folder <文件夹>] [--folders <文件夹1,文件夹2>] [--max 500] [--confirm]")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	client, err := auth.NewClient()
 	if err != nil {
@@ -2834,14 +3131,26 @@ func runMailRuleApply(args []string) error {
 	if err != nil {
 		return err
 	}
-	folderID := "inbox"
-	if strings.TrimSpace(*folderFlag) != "" {
-		folderID, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
-		if err != nil {
-			return err
+	folderIDs := make([]string, 0)
+	if strings.TrimSpace(*foldersFlag) != "" {
+		for _, folder := range splitAddresses(*foldersFlag) {
+			resolved, resolveErr := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, folder)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			folderIDs = append(folderIDs, resolved)
 		}
+	} else {
+		folderID := "inbox"
+		if strings.TrimSpace(*folderFlag) != "" {
+			folderID, err = graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+			if err != nil {
+				return err
+			}
+		}
+		folderIDs = append(folderIDs, folderID)
 	}
-	result, err := graph.ApplyMessageRule(ctx, loginResult.AccessToken, rule, folderID, *maxFlag, *confirmFlag)
+	result, err := graph.ApplyMessageRuleToFolders(ctx, loginResult.AccessToken, rule, folderIDs, *maxFlag, *confirmFlag)
 	if err != nil {
 		return err
 	}
@@ -2868,7 +3177,7 @@ func runMailRuleDelete(args []string) error {
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	idFlag := fs.String("id", "", "规则 ID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -2906,7 +3215,7 @@ func runMailMasterCategories(args []string) error {
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -2954,7 +3263,7 @@ func runMailMasterCategoryCreate(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	nameFlag := fs.String("name", "", "类别名称")
 	colorFlag := fs.String("color", "", "类别颜色，例如 preset0")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*nameFlag) == "" {
@@ -2995,7 +3304,7 @@ func runMailMasterCategoryUpdate(args []string) error {
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	idFlag := fs.String("id", "", "类别 ID")
 	colorFlag := fs.String("color", "", "类别颜色，例如 preset0")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*colorFlag) == "" {
@@ -3035,7 +3344,7 @@ func runMailMasterCategoryDelete(args []string) error {
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	idFlag := fs.String("id", "", "类别 ID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -3074,7 +3383,7 @@ func runContactsMove(args []string) error {
 	idFlag := fs.String("id", "", "联系人 ID")
 	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*folderFlag) == "" {
@@ -3118,7 +3427,7 @@ func runMailPermanentDelete(args []string) error {
 	fs.SetOutput(os.Stderr)
 	idFlag := fs.String("id", "", "邮件 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -3158,7 +3467,7 @@ func runContactsCopy(args []string) error {
 	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID")
 	nameFlag := fs.String("name", "", "新联系人显示名称，不填时沿用原名")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*folderFlag) == "" {
@@ -3202,7 +3511,7 @@ func runCalendarCalendars(args []string) error {
 	fs.SetOutput(os.Stderr)
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -3250,7 +3559,7 @@ func runContactsFolderRename(args []string) error {
 	idFlag := fs.String("id", "", "文件夹 ID")
 	nameFlag := fs.String("name", "", "新文件夹名称")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*nameFlag) == "" {
@@ -3298,7 +3607,7 @@ func runMailDraftUpdate(args []string) error {
 	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
 	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -3393,7 +3702,7 @@ func runContactsPermanentDelete(args []string) error {
 	fs.SetOutput(os.Stderr)
 	idFlag := fs.String("id", "", "联系人 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -3432,7 +3741,7 @@ func runContactsPhotoGet(args []string) error {
 	idFlag := fs.String("id", "", "联系人 ID")
 	outFlag := fs.String("out", "", "保存照片的本地路径")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*outFlag) == "" {
@@ -3477,7 +3786,7 @@ func runContactsPhotoSet(args []string) error {
 	idFlag := fs.String("id", "", "联系人 ID")
 	fileFlag := fs.String("file", "", "本地照片文件路径")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
@@ -3525,7 +3834,7 @@ func runCalendarAttachments(args []string) error {
 	idFlag := fs.String("id", "", "事件 ID")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -3576,21 +3885,20 @@ func runCalendarAttachmentAdd(args []string) error {
 	idFlag := fs.String("id", "", "事件 ID")
 	fileFlag := fs.String("file", "", "本地附件文件路径")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
 		return errors.New("用法: outlookctl calendar attachment-add --id <事件ID> --file <附件路径>")
 	}
-	data, err := os.ReadFile(*fileFlag)
+	attachments, err := graph.LoadMailAttachments([]string{*fileFlag})
 	if err != nil {
-		return fmt.Errorf("读取附件失败: %w", err)
+		return err
 	}
-	contentType := mime.TypeByExtension(filepath.Ext(*fileFlag))
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	if len(attachments) == 0 {
+		return fmt.Errorf("附件文件不能为空")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	client, err := auth.NewClient()
 	if err != nil {
@@ -3608,11 +3916,7 @@ func runCalendarAttachmentAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, graph.MailAttachmentInput{
-		Name:         filepath.Base(*fileFlag),
-		ContentType:  contentType,
-		ContentBytes: data,
-	})
+	attachment, err := graph.AddCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, attachments[0])
 	if err != nil {
 		return err
 	}
@@ -3630,7 +3934,7 @@ func runCalendarAttachmentGet(args []string) error {
 	attachmentIDFlag := fs.String("attachment-id", "", "附件 ID")
 	outFlag := fs.String("out", "", "保存附件的本地路径")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" || strings.TrimSpace(*outFlag) == "" {
@@ -3675,7 +3979,7 @@ func runCalendarCancel(args []string) error {
 	idFlag := fs.String("id", "", "事件 ID")
 	commentFlag := fs.String("comment", "", "取消说明")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" {
@@ -3715,7 +4019,7 @@ func runCalendarRespond(args []string) error {
 	responseFlag := fs.String("response", "", "响应类型: accept/decline/tentative")
 	commentFlag := fs.String("comment", "", "响应说明")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
-	if err := fs.Parse(args); err != nil {
+	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*responseFlag) == "" {
@@ -3747,6 +4051,644 @@ func runCalendarRespond(args []string) error {
 	return nil
 }
 
+// runCalendarForward 转发日历事件。
+func runCalendarForward(args []string) error {
+	fs := flag.NewFlagSet("calendar forward", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	toFlag := fs.String("to", "", "转发收件人，多个用逗号分隔")
+	commentFlag := fs.String("comment", "", "转发说明")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || len(splitAddresses(*toFlag)) == 0 {
+		return errors.New("用法: outlookctl calendar forward --id <事件ID> --to <邮箱> [--comment <说明>]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.ForwardCalendarEvent(ctx, loginResult.AccessToken, *idFlag, *commentFlag, splitAddresses(*toFlag)); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历事件已转发: %s\n", *idFlag)
+	return nil
+}
+
+// runMailDraftAttachmentDelete 删除草稿附件。
+func runMailDraftAttachmentDelete(args []string) error {
+	fs := flag.NewFlagSet("mail draft-attachment-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "附件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" {
+		return errors.New("用法: outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteDraftAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿附件已删除: %s\n", *attachmentIDFlag)
+	return nil
+}
+
+// runMailDraftAttachmentReplace 替换草稿附件。
+func runMailDraftAttachmentReplace(args []string) error {
+	fs := flag.NewFlagSet("mail draft-attachment-replace", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "旧附件 ID")
+	fileFlag := fs.String("file", "", "新附件文件路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file <新附件>")
+	}
+	attachments, err := graph.LoadMailAttachments([]string{*fileFlag})
+	if err != nil {
+		return err
+	}
+	if len(attachments) == 0 {
+		return errors.New("新附件文件不能为空")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachment, err := graph.ReplaceDraftAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag, attachments[0])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "草稿附件已替换: %s\n", attachment.Name)
+	fmt.Fprintf(os.Stdout, "新附件 ID: %s\n", attachment.ID)
+	return nil
+}
+
+// runContactsExport 导出联系人到 CSV。
+func runContactsExport(args []string) error {
+	fs := flag.NewFlagSet("contacts export", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	outFlag := fs.String("out", "", "导出的文件路径")
+	formatFlag := fs.String("format", "csv", "导出格式: csv 或 vcf")
+	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
+	maxFlag := fs.Int("max", 500, "最多导出多少个联系人，范围 1-1000")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*outFlag) == "" {
+		return errors.New("用法: outlookctl contacts export --out <CSV文件> [--folder <文件夹>] [--max 500]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID := ""
+	if strings.TrimSpace(*folderFlag) != "" {
+		folderID, err = graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if err != nil {
+			return err
+		}
+	}
+	contacts, err := graph.ListContactsInFolderAll(ctx, loginResult.AccessToken, folderID, *maxFlag)
+	if err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(*formatFlag)) {
+	case "csv", "":
+		if err := contactcsv.ExportFile(*outFlag, contacts); err != nil {
+			return err
+		}
+	case "vcf", "vcard":
+		if err := vcard.ExportFile(*outFlag, contacts); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("不支持的导出格式: %s", *formatFlag)
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "联系人已导出: %d\n", len(contacts))
+	fmt.Fprintf(os.Stdout, "文件: %s\n", *outFlag)
+	return nil
+}
+
+// runContactsImport 从 CSV 导入联系人。
+func runContactsImport(args []string) error {
+	fs := flag.NewFlagSet("contacts import", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fileFlag := fs.String("file", "", "联系人文件路径")
+	formatFlag := fs.String("format", "csv", "导入格式: csv 或 vcf")
+	folderFlag := fs.String("folder", "", "目标联系人文件夹名称或 ID；不填时使用默认文件夹")
+	maxFlag := fs.Int("max", 500, "最多导入多少个联系人，范围 1-1000")
+	confirmFlag := fs.Bool("confirm", false, "确认实际创建联系人；不填时只 dry-run")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl contacts import --file <CSV文件> [--folder <文件夹>] [--max 500] [--confirm]")
+	}
+	var inputs []graph.ContactInput
+	var err error
+	switch strings.ToLower(strings.TrimSpace(*formatFlag)) {
+	case "csv", "":
+		inputs, err = contactcsv.ReadFile(*fileFlag)
+	case "vcf", "vcard":
+		inputs, err = vcard.ReadFile(*fileFlag)
+	default:
+		return fmt.Errorf("不支持的导入格式: %s", *formatFlag)
+	}
+	if err != nil {
+		return err
+	}
+	if *maxFlag <= 0 {
+		*maxFlag = 500
+	}
+	if *maxFlag > 1000 {
+		*maxFlag = 1000
+	}
+	if len(inputs) > *maxFlag {
+		inputs = inputs[:*maxFlag]
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID := ""
+	if strings.TrimSpace(*folderFlag) != "" {
+		folderID, err = graph.ResolveContactFolderID(ctx, loginResult.AccessToken, *folderFlag)
+		if err != nil {
+			return err
+		}
+	}
+	if !*confirmFlag {
+		fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+		fmt.Fprintf(os.Stdout, "待导入联系人: %d\n", len(inputs))
+		fmt.Fprintln(os.Stdout, "这是 dry-run，未创建任何联系人；确认后加 --confirm 执行")
+		return nil
+	}
+	successCount := 0
+	failureCount := 0
+	for _, input := range inputs {
+		if _, err := graph.CreateContactInFolder(ctx, loginResult.AccessToken, folderID, input); err != nil {
+			failureCount++
+			fmt.Fprintf(os.Stderr, "导入失败 (%s): %v\n", input.DisplayName, err)
+			continue
+		}
+		successCount++
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "导入成功: %d\n", successCount)
+	fmt.Fprintf(os.Stdout, "导入失败: %d\n", failureCount)
+	return nil
+}
+
+// runCalendarAttachmentDelete 删除日历附件。
+func runCalendarAttachmentDelete(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "附件 ID")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-delete --id <事件ID> --attachment-id <附件ID>")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	if err := graph.DeleteCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已删除: %s\n", *attachmentIDFlag)
+	return nil
+}
+
+// runCalendarAttachmentReplace 替换日历附件。
+func runCalendarAttachmentReplace(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-replace", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentIDFlag := fs.String("attachment-id", "", "旧附件 ID")
+	fileFlag := fs.String("file", "", "新附件文件路径")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*idFlag) == "" || strings.TrimSpace(*attachmentIDFlag) == "" || strings.TrimSpace(*fileFlag) == "" {
+		return errors.New("用法: outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file <新附件>")
+	}
+	attachments, err := graph.LoadMailAttachments([]string{*fileFlag})
+	if err != nil {
+		return err
+	}
+	if len(attachments) == 0 {
+		return errors.New("新附件文件不能为空")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	attachment, err := graph.ReplaceCalendarEventAttachment(ctx, loginResult.AccessToken, *idFlag, *attachmentIDFlag, attachments[0])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	fmt.Fprintf(os.Stdout, "日历附件已替换: %s\n", attachment.Name)
+	fmt.Fprintf(os.Stdout, "新附件 ID: %s\n", attachment.ID)
+	return nil
+}
+
+func printBulkResult(username string, result *graph.BulkResult, jsonFlag bool) error {
+	if jsonFlag {
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", username)
+	fmt.Fprintf(os.Stdout, "总数: %d\n", result.Total)
+	fmt.Fprintf(os.Stdout, "成功: %d\n", result.Succeeded)
+	fmt.Fprintf(os.Stdout, "失败: %d\n", result.Failed)
+	if result.DryRun {
+		fmt.Fprintln(os.Stdout, "模式: dry-run，未修改任何数据；确认后加 --confirm 执行")
+	}
+	for _, failure := range result.Failures {
+		fmt.Fprintf(os.Stderr, "失败: %s\n", failure)
+	}
+	return nil
+}
+
+func runMailBulkMove(args []string) error {
+	fs := flag.NewFlagSet("mail bulk-move", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idsFlag := fs.String("ids", "", "邮件 ID 列表，多个用逗号分隔")
+	folderFlag := fs.String("folder", "", "目标文件夹名称或 ID")
+	confirmFlag := fs.Bool("confirm", false, "确认实际移动邮件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*idsFlag)
+	if len(ids) == 0 || strings.TrimSpace(*folderFlag) == "" {
+		return errors.New("用法: outlookctl mail bulk-move --ids <id1,id2> --folder <文件夹> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	folderID, err := graph.ResolveMailFolderID(ctx, loginResult.AccessToken, *folderFlag)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkMoveMessages(ctx, loginResult.AccessToken, ids, folderID, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runMailBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("mail bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idsFlag := fs.String("ids", "", "邮件 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除邮件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*idsFlag)
+	if len(ids) == 0 {
+		return errors.New("用法: outlookctl mail bulk-delete --ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteMessages(ctx, loginResult.AccessToken, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runContactsBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("contacts bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idsFlag := fs.String("ids", "", "联系人 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除联系人")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*idsFlag)
+	if len(ids) == 0 {
+		return errors.New("用法: outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteContacts(ctx, loginResult.AccessToken, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runCalendarAttachmentBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("calendar attachment-bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "事件 ID")
+	attachmentsFlag := fs.String("attachment-ids", "", "附件 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除附件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*attachmentsFlag)
+	if strings.TrimSpace(*idFlag) == "" || len(ids) == 0 {
+		return errors.New("用法: outlookctl calendar attachment-bulk-delete --id <事件ID> --attachment-ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteCalendarEventAttachments(ctx, loginResult.AccessToken, *idFlag, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runMailDraftAttachmentBulkDelete(args []string) error {
+	fs := flag.NewFlagSet("mail draft-attachment-bulk-delete", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	idFlag := fs.String("id", "", "草稿 ID")
+	attachmentsFlag := fs.String("attachment-ids", "", "附件 ID 列表，多个用逗号分隔")
+	confirmFlag := fs.Bool("confirm", false, "确认实际删除附件")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ids := splitAddresses(*attachmentsFlag)
+	if strings.TrimSpace(*idFlag) == "" || len(ids) == 0 {
+		return errors.New("用法: outlookctl mail draft-attachment-bulk-delete --id <草稿ID> --attachment-ids <id1,id2> [--confirm]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	result, err := graph.BulkDeleteDraftAttachments(ctx, loginResult.AccessToken, *idFlag, ids, *confirmFlag)
+	if err != nil {
+		return err
+	}
+	return printBulkResult(selected.Username, result, *jsonFlag)
+}
+
+func runMailFolderTree(args []string) error {
+	fs := flag.NewFlagSet("mail folder-tree", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	topFlag := fs.Int("top", 200, "每层最多读取多少个文件夹")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	client, err := auth.NewClient()
+	if err != nil {
+		return err
+	}
+	accounts, err := client.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	selected, err := auth.SelectAccount(accounts, *accountFlag)
+	if err != nil {
+		return err
+	}
+	loginResult, err := client.AcquireTokenSilent(ctx, selected)
+	if err != nil {
+		return err
+	}
+	tree, err := graph.ListMailFolderTree(ctx, loginResult.AccessToken, *topFlag)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		data, err := json.MarshalIndent(tree, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
+	var printNode func(nodes []graph.MailFolderNode, depth int)
+	printNode = func(nodes []graph.MailFolderNode, depth int) {
+		for _, node := range nodes {
+			fmt.Fprintf(os.Stdout, "%s- %s | 未读=%d | 总数=%d | id=%s\n", strings.Repeat("  ", depth), node.DisplayName, node.UnreadItemCount, node.TotalItemCount, node.ID)
+			printNode(node.Children, depth+1)
+		}
+	}
+	printNode(tree, 0)
+	return nil
+}
+
 // printUsage 输出命令行帮助。
 func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
@@ -3756,13 +4698,27 @@ func printUsage() {
   outlookctl auth status                   验证本地 token 缓存和静默刷新
   outlookctl account list                  查看本地账号档案
   outlookctl account use <email>           切换默认账号
+  outlookctl mailbox settings             查看邮箱设置
+  outlookctl mailbox auto-reply get       查看自动回复
+  outlookctl mailbox auto-reply set       设置自动回复
+  outlookctl mailbox timezone get         查看时区
+  outlookctl mailbox timezone set         设置时区
+  outlookctl doctor                        执行环境与账号诊断
+  outlookctl audit list [--limit 50]       查询本地审计日志
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail search --query <关键字>       搜索邮件
+  outlookctl mail query --from <邮箱> --unread --has-attachment --after 2026-10-01  高级邮件查询
+  outlookctl mail view save <名称> --from <邮箱> --unread  保存邮件视图
+  outlookctl mail view run <名称>                    运行邮件视图
   outlookctl mail send --to <邮箱> ...          发送邮件
   outlookctl mail read <message-id>         读取单封邮件详情
   outlookctl mail mark-read <message-id>    标记邮件为已读
   outlookctl mail mark-unread <message-id>  标记邮件为未读
   outlookctl mail folders                    列出邮件文件夹
+  outlookctl mail folder-tree                以树形列出邮件文件夹
+  outlookctl mail bulk-move --ids <id1,id2> --folder <文件夹> [--confirm]  批量移动邮件
+  outlookctl mail bulk-delete --ids <id1,id2> [--confirm]  批量删除邮件
+  outlookctl mail draft-attachment-bulk-delete --id <草稿ID> --attachment-ids <id1,id2> [--confirm]  批量删除草稿附件
   outlookctl mail move <message-id> --folder <文件夹>  移动邮件
   outlookctl mail delete <message-id>        删除邮件
   outlookctl mail permanent-delete --id <邮件ID>  永久删除邮件
@@ -3773,12 +4729,16 @@ func printUsage() {
   outlookctl calendar attachments --id <事件ID>  列出事件附件
   outlookctl calendar attachment-add --id <事件ID> --file <文件>  添加事件附件
   outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out <文件>  下载事件附件
+  outlookctl calendar attachment-delete --id <事件ID> --attachment-id <附件ID>  删除事件附件
+  outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file <文件>  替换事件附件
+  outlookctl calendar attachment-bulk-delete --id <事件ID> --attachment-ids <id1,id2> [--confirm]  批量删除事件附件
   outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
   outlookctl calendar delete --id <事件ID>  删除事件
   outlookctl calendar cancel --id <事件ID>  取消事件
   outlookctl calendar respond --id <事件ID> --response accept  响应日历邀请
+  outlookctl calendar forward --id <事件ID> --to <邮箱>  转发日历事件
   outlookctl contacts list --top 50          查看联系人
   outlookctl contacts search --query <关键字>  搜索联系人
   outlookctl contacts folders               列出联系人文件夹
@@ -3793,6 +4753,9 @@ func printUsage() {
   outlookctl contacts photo-set --id <联系人ID> --file <文件>  上传联系人照片
   outlookctl contacts move --id <联系人ID> --folder <文件夹>  移动联系人
   outlookctl contacts copy --id <联系人ID> --folder <文件夹>  复制联系人
+  outlookctl contacts export --out <CSV文件>  导出联系人
+  outlookctl contacts import --file <CSV文件> [--confirm]  导入联系人
+  outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]  批量删除联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件
@@ -3800,6 +4763,8 @@ func printUsage() {
   outlookctl mail drafts                     列出草稿
   outlookctl mail draft-send <draft-id>      发送草稿
   outlookctl mail draft-update --id <草稿ID>  更新草稿
+  outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>  删除草稿附件
+  outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file <文件>  替换草稿附件
   outlookctl mail folder-create --name <名称>  创建文件夹
   outlookctl mail folder-rename <id> --name <名称>  重命名文件夹
   outlookctl mail folder-delete <id>         删除文件夹

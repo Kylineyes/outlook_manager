@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"io"
 	"net/http"
 	"net/url"
@@ -23,15 +24,26 @@ type MessageRule struct {
 
 // MessageRuleInput 是创建收件箱规则的输入。
 type MessageRuleInput struct {
-	DisplayName         string
-	FromAddresses       []string
-	SubjectContains     []string
-	MoveToFolder        string
-	AssignCategories    []string
-	MarkAsRead          bool
-	Delete              bool
-	StopProcessingRules bool
-	IsEnabled           bool
+	DisplayName           string
+	FromAddresses         []string
+	SubjectContains       []string
+	BodyContains          []string
+	BodyOrSubjectContains []string
+	HasAttachments        bool
+	Importance            string
+	SenderContains        []string
+	RecipientContains     []string
+	MoveToFolder          string
+	CopyToFolder          string
+	AssignCategories      []string
+	ForwardTo             []string
+	RedirectTo            []string
+	MarkAsRead            bool
+	MarkImportance        string
+	Delete                bool
+	PermanentDelete       bool
+	StopProcessingRules   bool
+	IsEnabled             bool
 }
 
 // buildMessageRulePayload 构造 Graph 收件箱规则请求体。
@@ -59,6 +71,30 @@ func buildMessageRulePayload(input MessageRuleInput) (map[string]any, error) {
 	if len(input.SubjectContains) > 0 {
 		conditions["subjectContains"] = input.SubjectContains
 	}
+	if len(input.BodyContains) > 0 {
+		conditions["bodyContains"] = input.BodyContains
+	}
+	if len(input.BodyOrSubjectContains) > 0 {
+		conditions["bodyOrSubjectContains"] = input.BodyOrSubjectContains
+	}
+	if input.HasAttachments {
+		conditions["hasAttachments"] = true
+	}
+	if strings.TrimSpace(input.Importance) != "" {
+		importance := strings.ToLower(strings.TrimSpace(input.Importance))
+		switch importance {
+		case "low", "normal", "high":
+			conditions["importance"] = importance
+		default:
+			return nil, fmt.Errorf("不支持的规则重要性: %s", input.Importance)
+		}
+	}
+	if len(input.SenderContains) > 0 {
+		conditions["senderContains"] = input.SenderContains
+	}
+	if len(input.RecipientContains) > 0 {
+		conditions["recipientContains"] = input.RecipientContains
+	}
 	if len(conditions) == 0 {
 		return nil, fmt.Errorf("至少需要一个规则条件")
 	}
@@ -67,14 +103,43 @@ func buildMessageRulePayload(input MessageRuleInput) (map[string]any, error) {
 	if strings.TrimSpace(input.MoveToFolder) != "" {
 		actions["moveToFolder"] = strings.TrimSpace(input.MoveToFolder)
 	}
+	if strings.TrimSpace(input.CopyToFolder) != "" {
+		actions["copyToFolder"] = strings.TrimSpace(input.CopyToFolder)
+	}
 	if len(input.AssignCategories) > 0 {
 		actions["assignCategories"] = input.AssignCategories
+	}
+	if len(input.ForwardTo) > 0 {
+		recipients, err := buildRecipients(input.ForwardTo, "规则转发收件人")
+		if err != nil {
+			return nil, err
+		}
+		actions["forwardTo"] = recipients
+	}
+	if len(input.RedirectTo) > 0 {
+		recipients, err := buildRecipients(input.RedirectTo, "规则重定向收件人")
+		if err != nil {
+			return nil, err
+		}
+		actions["redirectTo"] = recipients
 	}
 	if input.MarkAsRead {
 		actions["markAsRead"] = true
 	}
+	if strings.TrimSpace(input.MarkImportance) != "" {
+		importance := strings.ToLower(strings.TrimSpace(input.MarkImportance))
+		switch importance {
+		case "low", "normal", "high":
+			actions["markImportance"] = importance
+		default:
+			return nil, fmt.Errorf("不支持的规则优先级: %s", input.MarkImportance)
+		}
+	}
 	if input.Delete {
 		actions["delete"] = true
+	}
+	if input.PermanentDelete {
+		actions["permanentDelete"] = true
 	}
 	if input.StopProcessingRules {
 		actions["stopProcessingRules"] = true
@@ -150,6 +215,7 @@ func CreateMessageRule(ctx context.Context, accessToken string, input MessageRul
 	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
 		return nil, fmt.Errorf("解析创建收件箱规则响应失败: %w", err)
 	}
+	audit.Log("mail.rule.create", map[string]any{"ruleId": rule.ID, "ruleName": rule.DisplayName})
 	return &rule, nil
 }
 
@@ -175,6 +241,7 @@ func DeleteMessageRule(ctx context.Context, accessToken, ruleID string) error {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 删除收件箱规则返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("mail.rule.delete", map[string]any{"ruleId": ruleID})
 	return nil
 }
 
@@ -213,6 +280,7 @@ func UpdateMessageRule(ctx context.Context, accessToken, ruleID string, input Me
 	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
 		return nil, fmt.Errorf("解析更新收件箱规则响应失败: %w", err)
 	}
+	audit.Log("mail.rule.update", map[string]any{"ruleId": rule.ID, "ruleName": rule.DisplayName})
 	return &rule, nil
 }
 

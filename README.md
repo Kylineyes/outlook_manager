@@ -11,8 +11,13 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱邮件列表
 - 单封邮件详情
 - 邮件搜索
+- 高级邮件查询
+- 保存邮件视图
+- 邮箱设置管理（自动回复、时区、语言、工作时间）
 - 邮件分页全量拉取
-- Graph 临时网络错误自动重试
+- Graph 与 token 请求临时错误自动重试
+- CLI 子命令 --help 体系
+- 本地操作审计日志（轮转与查询）
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -20,6 +25,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 设置重要性
 - 邮件文件夹列表
 - 邮件文件夹创建、重命名、删除
+- 邮件文件夹树形展示
 - 邮件移动
 - 邮件删除（移动到已删除邮件）
 - 邮件永久删除
@@ -31,8 +37,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件类别查看、添加、移除
 - 收件箱规则管理
 - 收件箱规则更新
-- 收件箱规则回放（dry-run / confirm）
-- 规则分类动作（assignCategories）
+- 收件箱规则回放（完整正文、多文件夹、dry-run / confirm）
+- 规则高级条件与动作（正文、发件人、收件人、分类、复制、移动、转发、重定向、删除）
 - 主类别管理
 - 主类别颜色更新
 - 日历事件读取
@@ -40,9 +46,11 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 日历事件创建、更新、删除
 - 日历参与人与提醒
 - 日历事件分类、状态、重要性、敏感度
-- 日历事件附件读取、添加、下载
+- 日历事件附件读取、添加、下载、删除、替换
+- 日历事件大附件上传（3 MiB - 150 MiB）
 - 日历事件取消
 - 日历邀请响应（接受、拒绝、暂定）
+- 日历事件转发
 - 联系人读取
 - 联系人创建、更新、删除
 - 联系人搜索
@@ -58,6 +66,13 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 联系人照片读取与上传
 - 草稿创建、列表、发送
 - 草稿更新
+- 草稿附件删除/替换
+- 批量邮件、联系人、附件删除/移动操作
+- 联系人批量导入导出（CSV / vCard）
+- MCP tool annotations（只读/破坏性提示）
+- MCP 结构化输出（outputSchema / structuredContent / 统一错误码）
+- MCP 每个 tool 独立 schema 和结构化错误结果
+- CLI doctor 环境与账号诊断
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
 ## 环境要求
@@ -105,6 +120,13 @@ outlookctl mail list --top 10
 outlookctl mail list --all --max 500
 outlookctl mail read <message-id>
 outlookctl mail search --query "关键字"
+outlookctl mail query --from someone@example.com --unread --has-attachment --after 2026-10-01
+outlookctl mail view save "未读重要" --from someone@example.com --unread
+outlookctl mail view list
+outlookctl mail view run "未读重要"
+outlookctl mailbox settings
+outlookctl mailbox auto-reply get
+outlookctl mailbox timezone get
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文"
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --attach C:\temp\file.pdf
 outlookctl mail send --to someone@example.com --subject "主题" --body "正文" --importance high --read-receipt --delivery-receipt
@@ -125,6 +147,7 @@ outlookctl mail rule-delete --id <规则ID>
 outlookctl mail rule-update --id <规则ID> --name "规则" --subject-contains "关键字" --mark-read
 outlookctl mail rule-apply --id <规则ID> [--confirm]
 outlookctl mail rule-create --name "分类规则" --subject-contains "关键字" --category "项目A" --apply-now --confirm-apply
+outlookctl mail rule-create --name "高级规则" --body-contains "关键字" --has-attachments --copy-to "归档" --forward-to someone@example.com --disabled
 outlookctl mail master-categories
 outlookctl mail master-category-create --name "项目A" --color preset0
 outlookctl mail master-category-delete --id <类别ID>
@@ -135,6 +158,8 @@ outlookctl calendar list --calendar "日历" --days 7
 outlookctl calendar attachments --id <事件ID>
 outlookctl calendar attachment-add --id <事件ID> --file C:\temp\file.pdf
 outlookctl calendar attachment-get --id <事件ID> --attachment-id <附件ID> --out C:\temp\file.pdf
+outlookctl calendar attachment-delete --id <事件ID> --attachment-id <附件ID>
+outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file C:\temp\new.pdf
 outlookctl calendar create --subject "主题" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00"
 outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --attendees someone@example.com --reminder-minutes 10
 outlookctl calendar create --subject "会议" --start "2026-10-20T10:00:00" --end "2026-10-20T11:00:00" --categories "项目A,重要" --show-as busy --importance high --sensitivity private
@@ -143,6 +168,7 @@ outlookctl calendar update --id <事件ID> --subject "主题" --start "2026-10-2
 outlookctl calendar delete --id <事件ID>
 outlookctl calendar cancel --id <事件ID> --comment "取消说明"
 outlookctl calendar respond --id <事件ID> --response accept
+outlookctl calendar forward --id <事件ID> --to someone@example.com
 outlookctl contacts list --top 20
 outlookctl contacts list --folder "客户" --top 20
 outlookctl contacts search --query "张"
@@ -155,6 +181,10 @@ outlookctl contacts create --display-name "名称" --email someone@example.com -
 outlookctl contacts create --folder "客户" --display-name "名称" --email someone@example.com
 outlookctl contacts move --id <联系人ID> --folder "客户"
 outlookctl contacts copy --id <联系人ID> --folder "客户" --name "副本名称"
+outlookctl contacts export --out C:\temp\contacts.csv
+outlookctl contacts import --file C:\temp\contacts.csv --confirm
+outlookctl contacts export --out C:\temp\contacts.vcf --format vcf
+outlookctl contacts import --file C:\temp\contacts.vcf --format vcf --confirm
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl contacts permanent-delete --id <联系人ID>
@@ -169,6 +199,8 @@ outlookctl mail draft-create --to someone@example.com --subject "主题" --body 
 outlookctl mail drafts
 outlookctl mail draft-send <draft-id>
 outlookctl mail draft-update --id <草稿ID> --to someone@example.com --subject "新主题" --body "新正文"
+outlookctl mail draft-attachment-delete --id <草稿ID> --attachment-id <附件ID>
+outlookctl mail draft-attachment-replace --id <草稿ID> --attachment-id <附件ID> --file C:\temp\new.pdf
 outlookctl mail folder-create --name "新文件夹"
 outlookctl mail folder-rename <folder-id> --name "新名称"
 outlookctl mail folder-delete <folder-id>
@@ -179,7 +211,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 63 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 87 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -193,6 +225,10 @@ outlookctl mail importance <message-id> --level high
 ```text
 docs/mcp.md
 ```
+
+双账号日历验证计划见：`docs/calendar-invite-test-plan.md`。
+
+后续开发计划见 `ROADMAP.md`。
 
 ## 本地数据
 
@@ -208,6 +244,19 @@ docs/mcp.md
 - `accounts.json`：可读账号档案，不保存 token
 - `token-cache.bin`：DPAPI 加密后的 access token 和 refresh token
 - `logs\auth.log`：预留的认证日志位置
+- `logs\audit.log`：JSON Lines 操作审计日志
+- `views.json`：保存的邮件查询视图
+
+查询审计日志：
+
+```text
+outlookctl audit list --limit 20
+outlookctl doctor
+outlookctl mail folder-tree
+outlookctl mail bulk-delete --ids <id1,id2> [--confirm]
+outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]
+outlookctl audit list --action mail. --json
+```
 
 ## 开发
 

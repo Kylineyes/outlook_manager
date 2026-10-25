@@ -53,6 +53,8 @@ outlook_manager/
 - `accounts.json`：账号档案，可读，便于人工确认，不保存 token。
 - `token-cache.bin`：OAuth token cache，Windows 下使用 DPAPI 当前用户加密。
 - `logs\auth.log`：登录、刷新、失败日志，不记录 token。
+- `logs\audit.log`：关键写操作的 JSON Lines 审计日志，不记录正文、附件或 token；默认 10 MiB 轮转，保留 5 个历史文件，清理 30 天前日志。
+- `views.json`：保存的邮件查询视图。
 
 ### 3.4 第一阶段能力
 
@@ -60,6 +62,11 @@ outlook_manager/
 - `outlookctl auth status`
 - `outlookctl account list`
 - `outlookctl account use <email>`
+- `outlookctl audit list`
+- `outlookctl doctor`
+- `outlookctl mailbox settings`
+- `outlookctl mailbox auto-reply`
+- `outlookctl mailbox timezone`
 - `outlookctl mail list`
 - `outlookctl mail read`
 - `outlookctl mail search`
@@ -67,6 +74,11 @@ outlook_manager/
 - `outlookctl mail mark-read`
 - `outlookctl mail mark-unread`
 - `outlookctl mail folders`
+- `outlookctl mail query`
+- `outlookctl mail view`
+- `outlookctl mail folder-tree`
+- `outlookctl mail bulk-move`
+- `outlookctl mail bulk-delete`
 - `outlookctl mail move`
 - `outlookctl mail delete`
 - `outlookctl mail permanent-delete`
@@ -79,6 +91,9 @@ outlook_manager/
 - `outlookctl mail drafts`
 - `outlookctl mail draft-send`
 - `outlookctl mail draft-update`
+- `outlookctl mail draft-attachment-delete`
+- `outlookctl mail draft-attachment-replace`
+- `outlookctl mail draft-attachment-bulk-delete`
 - `outlookctl mail folder-create`
 - `outlookctl mail folder-rename`
 - `outlookctl mail folder-delete`
@@ -104,9 +119,13 @@ outlook_manager/
 - `outlookctl calendar delete`
 - `outlookctl calendar cancel`
 - `outlookctl calendar respond`
+- `outlookctl calendar forward`
 - `outlookctl calendar attachments`
 - `outlookctl calendar attachment-add`
 - `outlookctl calendar attachment-get`
+- `outlookctl calendar attachment-delete`
+- `outlookctl calendar attachment-replace`
+- `outlookctl calendar attachment-bulk-delete`
 - `outlookctl contacts list`
 - `outlookctl contacts search`
 - `outlookctl contacts folders`
@@ -115,13 +134,16 @@ outlook_manager/
 - `outlookctl contacts folder-delete`
 - `outlookctl contacts move`
 - `outlookctl contacts copy`
+- `outlookctl contacts export`
+- `outlookctl contacts import`
+- `outlookctl contacts bulk-delete`
 - `outlookctl contacts create`
 - `outlookctl contacts update`
 - `outlookctl contacts delete`
 - `outlookctl contacts permanent-delete`
 - `outlookctl contacts photo-get`
 - `outlookctl contacts photo-set`
-- 对应的 MCP 工具：`account_list`、`auth_status`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_move`、`mail_delete`、`mail_permanent_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_draft_update`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`、`mail_message_categories`、`mail_category_add`、`mail_category_remove`、`mail_rules_list`、`mail_rule_create`、`mail_rule_delete`、`mail_rule_update`、`mail_rule_apply`、`mail_master_categories_list`、`mail_master_category_create`、`mail_master_category_delete`、`mail_master_category_update`、`calendar_list`、`calendar_calendars_list`、`contacts_list`、`calendar_create`、`calendar_update`、`calendar_delete`、`calendar_cancel`、`calendar_respond`、`calendar_attachments_list`、`calendar_attachment_add`、`calendar_attachment_get`、`contacts_create`、`contacts_update`、`contacts_delete`、`contacts_permanent_delete`、`contacts_photo_get`、`contacts_photo_set`、`contacts_search`、`contacts_folders_list`、`contacts_folder_create`、`contacts_folder_delete`、`contacts_folder_rename`、`contacts_move`、`contacts_copy`
+- 对应的 MCP 工具：`account_list`、`auth_status`、`audit_list`、`mailbox_settings_get`、`mailbox_auto_reply_get`、`mailbox_auto_reply_set`、`mailbox_timezone_get`、`mailbox_timezone_set`、`mail_query`、`mail_view_save`、`mail_view_list`、`mail_view_run`、`mail_view_delete`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_folder_tree`、`mail_bulk_move`、`mail_bulk_delete`、`mail_move`、`mail_delete`、`mail_permanent_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_draft_update`、`mail_draft_attachment_delete`、`mail_draft_attachment_replace`、`mail_draft_attachment_bulk_delete`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`、`mail_message_categories`、`mail_category_add`、`mail_category_remove`、`mail_rules_list`、`mail_rule_create`、`mail_rule_delete`、`mail_rule_update`、`mail_rule_apply`、`mail_master_categories_list`、`mail_master_category_create`、`mail_master_category_delete`、`mail_master_category_update`、`calendar_list`、`calendar_calendars_list`、`contacts_list`、`calendar_create`、`calendar_update`、`calendar_delete`、`calendar_cancel`、`calendar_respond`、`calendar_forward`、`calendar_attachments_list`、`calendar_attachment_add`、`calendar_attachment_get`、`calendar_attachment_delete`、`calendar_attachment_replace`、`calendar_attachment_bulk_delete`、`contacts_create`、`contacts_update`、`contacts_delete`、`contacts_permanent_delete`、`contacts_photo_get`、`contacts_photo_set`、`contacts_search`、`contacts_folders_list`、`contacts_folder_create`、`contacts_folder_delete`、`contacts_folder_rename`、`contacts_move`、`contacts_copy`、`contacts_export`、`contacts_import`、`contacts_bulk_delete`
 
 ## 4. 代码编写准则
 

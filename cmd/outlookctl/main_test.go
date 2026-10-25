@@ -36,3 +36,16 @@ func TestSplitAddresses(t *testing.T) {
 		t.Fatalf("拆分结果 = %#v, 期望 %#v", got, want)
 	}
 }
+
+// TestHelpRequested 验证 --help 和 -h 能被识别。
+func TestHelpRequested(t *testing.T) {
+	if !helpRequested([]string{"msg-1", "--help"}) {
+		t.Fatal("--help 应被识别")
+	}
+	if !helpRequested([]string{"-h"}) {
+		t.Fatal("-h 应被识别")
+	}
+	if helpRequested([]string{"msg-1", "--json"}) {
+		t.Fatal("普通参数不应被识别为帮助请求")
+	}
+}

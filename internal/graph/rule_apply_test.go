@@ -2,6 +2,7 @@ package graph
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -43,11 +44,11 @@ func TestMatchesMessageRule(t *testing.T) {
 		HasAttachments:  true,
 		Importance:      "high",
 	}
-	if !matchesMessageRule(conditions, message) {
+	if !matchesMessageRule(conditions, message, message.BodyPreview) {
 		t.Fatal("expected message to match")
 	}
 	message.Importance = "normal"
-	if matchesMessageRule(conditions, message) {
+	if matchesMessageRule(conditions, message, message.BodyPreview) {
 		t.Fatal("expected message not to match after importance changed")
 	}
 }
@@ -72,5 +73,45 @@ func TestParseMessageRuleActionsRejectsUnsupportedAction(t *testing.T) {
 	_, err := parseMessageRuleActions(map[string]any{"forwardTo": []any{"someone@example.com"}})
 	if err == nil {
 		t.Fatal("expected error for unsupported action")
+	}
+}
+
+func TestMatchesMessageRuleUsesFullBody(t *testing.T) {
+	message := Message{Subject: "hello", BodyPreview: "preview only"}
+	conditions := &messageRuleConditions{BodyContains: []string{"完整正文关键字"}}
+	if matchesMessageRule(conditions, message, "这是一段完整正文关键字内容") {
+		return
+	}
+	t.Fatal("expected full body to match")
+}
+
+func TestParseMessageRuleActionsSupportsCopyAndForward(t *testing.T) {
+	actions, err := parseMessageRuleActions(map[string]any{
+		"copyToFolder": "folder-copy",
+		"forwardTo": []any{
+			map[string]any{"emailAddress": map[string]any{"address": "a@example.com"}},
+		},
+		"redirectTo": []any{
+			map[string]any{"emailAddress": map[string]any{"address": "b@example.com"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseMessageRuleActions returned error: %v", err)
+	}
+	if actions.CopyToFolder != "folder-copy" {
+		t.Fatalf("CopyToFolder = %q", actions.CopyToFolder)
+	}
+	if !reflect.DeepEqual(actions.ForwardTo, []string{"a@example.com"}) {
+		t.Fatalf("ForwardTo = %#v", actions.ForwardTo)
+	}
+	if !reflect.DeepEqual(actions.RedirectTo, []string{"b@example.com"}) {
+		t.Fatalf("RedirectTo = %#v", actions.RedirectTo)
+	}
+}
+
+func TestHTMLToText(t *testing.T) {
+	got := htmlToText("<p>Hello &amp; world</p><br><b>test</b>")
+	if !strings.Contains(got, "Hello & world") || !strings.Contains(got, "test") {
+		t.Fatalf("htmlToText = %q", got)
 	}
 }

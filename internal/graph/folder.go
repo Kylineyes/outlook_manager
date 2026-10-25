@@ -195,3 +195,80 @@ func DeleteMailFolder(ctx context.Context, accessToken, folderID string) error {
 	}
 	return nil
 }
+
+// MailFolderNode 表示带子节点的邮件文件夹。
+type MailFolderNode struct {
+	MailFolder
+	Children []MailFolderNode `json:"children,omitempty"`
+}
+
+// ListChildMailFolders 读取指定邮件文件夹的子文件夹。
+func ListChildMailFolders(ctx context.Context, accessToken, parentID string, top int) ([]MailFolder, error) {
+	parentID = strings.TrimSpace(parentID)
+	if parentID == "" {
+		return nil, fmt.Errorf("父文件夹 ID 不能为空")
+	}
+	if top <= 0 {
+		top = 200
+	}
+	if top > 200 {
+		top = 200
+	}
+	query := url.Values{}
+	query.Set("$top", strconv.Itoa(top))
+	query.Set("$select", "id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount")
+	query.Set("$orderby", "displayName")
+	endpoint := graphBaseURL + "/me/mailFolders/" + url.PathEscape(parentID) + "/childFolders?" + query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建子文件夹列表请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := doGraphRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Graph 子文件夹列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("Graph 子文件夹列表返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result mailFolderListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 Graph 子文件夹列表失败: %w", err)
+	}
+	return result.Value, nil
+}
+
+// ListMailFolderTree 递归读取邮件文件夹树。
+func ListMailFolderTree(ctx context.Context, accessToken string, top int) ([]MailFolderNode, error) {
+	roots, err := ListMailFolders(ctx, accessToken, top)
+	if err != nil {
+		return nil, err
+	}
+	return buildMailFolderTree(ctx, accessToken, roots, top, 0)
+}
+
+func buildMailFolderTree(ctx context.Context, accessToken string, folders []MailFolder, top, depth int) ([]MailFolderNode, error) {
+	if depth >= 10 {
+		return nil, fmt.Errorf("邮件文件夹层级超过 10 层，已停止递归")
+	}
+	nodes := make([]MailFolderNode, 0, len(folders))
+	for _, folder := range folders {
+		node := MailFolderNode{MailFolder: folder}
+		if folder.ChildFolderCount > 0 {
+			children, err := ListChildMailFolders(ctx, accessToken, folder.ID, top)
+			if err != nil {
+				return nil, err
+			}
+			childNodes, err := buildMailFolderTree(ctx, accessToken, children, top, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			node.Children = childNodes
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, nil
+}

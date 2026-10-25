@@ -64,3 +64,16 @@ func TokenCachePath() (string, error) {
 	}
 	return filepath.Join(dir, "token-cache.bin"), nil
 }
+
+// AuditLogPath 返回审计日志文件路径。
+func AuditLogPath() (string, error) {
+	dir, err := EnsureBaseDir()
+	if err != nil {
+		return "", err
+	}
+	logDir := filepath.Join(dir, "logs")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		return "", fmt.Errorf("创建日志目录失败 (%s): %w", logDir, err)
+	}
+	return filepath.Join(logDir, "audit.log"), nil
+}

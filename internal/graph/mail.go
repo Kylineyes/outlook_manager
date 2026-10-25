@@ -24,6 +24,9 @@ type Message struct {
 	HasAttachments   bool        `json:"hasAttachments"`
 	Importance       string      `json:"importance,omitempty"`
 	From             MessageFrom `json:"from"`
+	ToRecipients     []Recipient `json:"toRecipients,omitempty"`
+	CcRecipients     []Recipient `json:"ccRecipients,omitempty"`
+	Categories       []string    `json:"categories,omitempty"`
 }
 
 // MessageFrom 表示邮件的发件人信息。
@@ -62,7 +65,7 @@ func ListMessagesInFolder(ctx context.Context, accessToken, folderID string, top
 
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,importance")
+	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,toRecipients,ccRecipients,importance")
 	query.Set("$orderby", "receivedDateTime desc")
 	endpoint := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID) + "/messages?" + query.Encode()
 
@@ -115,7 +118,7 @@ func SearchMessagesInFolder(ctx context.Context, accessToken, folderID, query st
 	escaped := strings.ReplaceAll(query, `"`, `\"`)
 	values.Set("$search", `"`+escaped+`"`)
 	values.Set("$top", strconv.Itoa(top))
-	values.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,importance")
+	values.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,toRecipients,ccRecipients,importance")
 
 	endpoint := graphBaseURL + "/me/messages?" + values.Encode()
 	if strings.TrimSpace(folderID) != "" {
@@ -165,7 +168,7 @@ func ListMessagesInFolderAll(ctx context.Context, accessToken, folderID string, 
 	}
 	query := url.Values{}
 	query.Set("$top", strconv.Itoa(pageSize))
-	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,importance")
+	query.Set("$select", "id,subject,receivedDateTime,isRead,hasAttachments,webLink,bodyPreview,from,toRecipients,ccRecipients,importance")
 	query.Set("$orderby", "receivedDateTime desc")
 	nextURL := graphBaseURL + "/me/mailFolders/" + url.PathEscape(folderID) + "/messages?" + query.Encode()
 	messages := make([]Message, 0, pageSize)

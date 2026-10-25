@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"io"
 	"net/http"
 	"strings"
@@ -123,6 +124,7 @@ func SendMail(ctx context.Context, accessToken string, input SendMailInput) erro
 			_ = DeleteMessage(ctx, accessToken, draftID)
 			return fmt.Errorf("发送带大附件的草稿失败: %w", err)
 		}
+		audit.Log("mail.send", map[string]any{"attachmentCount": len(input.Attachments)})
 		return nil
 	}
 	message, err := buildMessage(input)
@@ -157,6 +159,7 @@ func SendMail(ctx context.Context, accessToken string, input SendMailInput) erro
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("Graph 发送邮件返回异常状态: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	audit.Log("mail.send", map[string]any{"attachmentCount": len(input.Attachments)})
 	return nil
 }
 

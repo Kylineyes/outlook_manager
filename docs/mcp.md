@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 63 个 MCP tools 的分组说明
+- 87 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 63 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 87 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -166,6 +166,12 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | --- | --- | --- |
 | `account_list` | 列出本地已登录账号档案 | 无 |
 | `auth_status` | 检查 token 缓存并尝试静默刷新 | 无 |
+| `mailbox_settings_get` | 读取邮箱设置 | `account` |
+| `mailbox_auto_reply_get` | 读取自动回复设置 | `account` |
+| `mailbox_auto_reply_set` | 设置自动回复 | `status`、`internalMessage`、`externalMessage`、`externalAudience`、`start`、`end`、`timeZone`、`account` |
+| `mailbox_timezone_get` | 读取邮箱时区 | `account` |
+| `mailbox_timezone_set` | 设置邮箱时区 | `value`、`account` |
+| `audit_list` | 查询本地审计日志 | `limit`、`action` |
 
 ### 6.2 邮件读取与查询
 
@@ -174,7 +180,13 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_list` | 读取收件箱或指定文件夹邮件 | `account`、`folder`、`top`、`all`、`max` |
 | `mail_read` | 读取单封邮件详情 | `id`、`account` |
 | `mail_search` | 关键字搜索邮件 | `query`、`folder`、`top`、`account` |
+| `mail_query` | 高级邮件查询 | `folder`、`from`、`to`、`subject`、`body`、`search`、`importance`、`category`、`after`、`before`、`unreadOnly`、`hasAttachment`、`top`、`account` |
+| `mail_view_save` | 保存邮件视图 | `name` + 高级查询参数 |
+| `mail_view_list` | 列出邮件视图 | 无 |
+| `mail_view_run` | 运行邮件视图 | `name`、`account` |
+| `mail_view_delete` | 删除邮件视图 | `name` |
 | `mail_folders_list` | 列出邮件文件夹 | `top`、`account` |
+| `mail_folder_tree` | 树形列出邮件文件夹 | `top`、`account` |
 | `mail_attachments_list` | 列出邮件附件 | `id`、`account` |
 | `mail_attachment_save` | 下载邮件附件到本地 | `id`、`attachmentId`、`outputPath`、`account` |
 | `mail_message_categories` | 列出单封邮件的类别 | `id`、`account` |
@@ -191,6 +203,9 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_forward` | 转发邮件 | `id`、`to`、`body`、`account` |
 | `mail_draft_create` | 创建草稿 | 与 `mail_send` 类似，不含 `saveToSentItems` |
 | `mail_draft_update` | 更新草稿 | `id`、`to`、`subject`、`body`、`attachments`、`importance`、回执参数、`account` |
+| `mail_draft_attachment_delete` | 删除草稿附件 | `id`、`attachmentId`、`account` |
+| `mail_draft_attachment_replace` | 替换草稿附件 | `id`、`attachmentId`、`file`、`account` |
+| `mail_draft_attachment_bulk_delete` | 批量删除草稿附件 | `id`、`attachmentIds`、`confirm`、`account` |
 | `mail_draft_send` | 发送草稿 | `id`、`account` |
 | `mail_drafts_list` | 列出草稿 | `top`、`account` |
 | `mail_mark_read` | 标记已读 | `id`、`account` |
@@ -200,15 +215,17 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_set_importance` | 设置重要性 | `id`、`level`、`account` |
 | `mail_move` | 移动到文件夹 | `id`、`folder`、`account` |
 | `mail_delete` | 移动到已删除邮件 | `id`、`account` |
+| `mail_bulk_move` | 批量移动邮件，默认 dry-run | `ids`、`folder`、`confirm`、`account` |
+| `mail_bulk_delete` | 批量删除邮件，默认 dry-run | `ids`、`confirm`、`account` |
 | `mail_permanent_delete` | 永久删除邮件 | `id`、`account` |
 | `mail_category_add` | 给邮件添加类别 | `id`、`category`、`account` |
 | `mail_category_remove` | 移除邮件类别 | `id`、`category`、`account` |
 | `mail_folder_create` | 创建邮件文件夹 | `name`、`parent`、`account` |
 | `mail_folder_rename` | 重命名邮件文件夹 | `id`、`name`、`account` |
 | `mail_folder_delete` | 删除邮件文件夹 | `id`、`account` |
-| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`moveTo`、`assignCategories`、`markAsRead`、`delete`、`stop`、`disabled`、`applyNow`、`confirmApply`、`applyFolder`、`applyMax`、`account` |
+| `mail_rule_create` | 创建收件箱规则 | `name`、`from`、`subjectContains`、`bodyContains`、`bodyOrSubjectContains`、`hasAttachments`、`importance`、`senderContains`、`recipientContains`、`moveTo`、`copyTo`、`assignCategories`、`forwardTo`、`redirectTo`、`markAsRead`、`markImportance`、`delete`、`permanentDelete`、`stop`、`disabled`、`applyNow`、`confirmApply`、`applyFolder`、`applyFolders`、`applyMax`、`account` |
 | `mail_rule_update` | 更新收件箱规则 | `id` + 创建规则参数 |
-| `mail_rule_apply` | 回放规则到已有邮件，默认 dry-run | `id`、`folder`、`max`、`confirm`、`account` |
+| `mail_rule_apply` | 回放规则到已有邮件，默认 dry-run | `id`、`folder`、`folders`、`max`、`confirm`、`account` |
 | `mail_rule_delete` | 删除收件箱规则 | `id`、`account` |
 | `mail_master_category_create` | 创建主类别 | `name`、`color`、`account` |
 | `mail_master_category_update` | 更新主类别颜色 | `id`、`color`、`account` |
@@ -227,11 +244,17 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `calendar_delete` | 删除日历事件 | `id`、`account` |
 | `calendar_cancel` | 取消日历事件 | `id`、`comment`、`account` |
 | `calendar_respond` | 响应日历邀请 | `id`、`response`（accept/decline/tentative）、`comment`、`account` |
+| `calendar_forward` | 转发日历事件 | `id`、`to`、`comment`、`account` |
 | `calendar_attachments_list` | 列出事件附件 | `id`、`account` |
 | `calendar_attachment_add` | 给事件添加附件 | `id`、`file`、`account` |
 | `calendar_attachment_get` | 下载事件附件 | `id`、`attachmentId`、`account` |
+| `calendar_attachment_delete` | 删除事件附件 | `id`、`attachmentId`、`account` |
+| `calendar_attachment_replace` | 替换事件附件 | `id`、`attachmentId`、`file`、`account` |
+| `calendar_attachment_bulk_delete` | 批量删除事件附件 | `id`、`attachmentIds`、`confirm`、`account` |
 
 说明：`calendar_respond` 只能用于别人发来的会议邀请；如果当前账号是会议组织者，Graph 会拒绝响应。`calendar_cancel` 通常也需要当前账号是会议组织者。
+
+`calendar_attachment_add` 支持最大 150 MiB 的事件附件；超过 3 MiB 时会自动使用 Graph 上传会话。
 
 ### 6.5 联系人
 
@@ -251,6 +274,9 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `contacts_folder_delete` | 删除联系人文件夹 | `id`、`account` |
 | `contacts_photo_get` | 读取联系人照片 | `id`、`account` |
 | `contacts_photo_set` | 设置联系人照片 | `id`、`file`、`account` |
+| `contacts_bulk_delete` | 批量删除联系人，默认 dry-run | `ids`、`confirm`、`account` |
+| `contacts_export` | 导出联系人到 CSV 或 vCard | `file`、`format`、`folder`、`max`、`account` |
+| `contacts_import` | 从 CSV 或 vCard 导入联系人 | `file`、`format`、`folder`、`max`、`confirm`、`account` |
 
 ## 7. 常用示例
 
@@ -485,7 +511,260 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 `mail_rule_apply` 默认也是 dry-run；确认后加 `"confirm": true`。
 
 说明：Microsoft Graph 没有「立即运行规则」的官方端点。这里是本地回放功能，只支持可安全解析的常见条件和动作；遇到不支持的规则条件或动作会拒绝执行，避免误处理邮件。
-## 8. 返回格式
+
+当前回放支持完整正文匹配（HTML 会转换为纯文本）、多文件夹扫描，以及 `copyToFolder`、`forwardTo`、`redirectTo` 等动作。
+### 7.13 转发日历事件
+
+```json
+{
+  "tool": "calendar_forward",
+  "arguments": {
+    "id": "<event-id>",
+    "to": ["someone@example.com"],
+    "comment": "请参加"
+  }
+}
+```
+### 7.14 删除或替换草稿附件
+
+```json
+{
+  "tool": "mail_draft_attachment_delete",
+  "arguments": {
+    "id": "<draft-id>",
+    "attachmentId": "<attachment-id>"
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_draft_attachment_replace",
+  "arguments": {
+    "id": "<draft-id>",
+    "attachmentId": "<old-attachment-id>",
+    "file": "C:\\temp\\new.pdf"
+  }
+}
+```
+
+### 7.15 联系人 CSV 导入导出
+
+导出：
+
+```json
+{
+  "tool": "contacts_export",
+  "arguments": {
+    "file": "C:\\temp\\contacts.csv",
+    "max": 500
+  }
+}
+```
+
+导入默认是 dry-run：
+
+```json
+{
+  "tool": "contacts_import",
+  "arguments": {
+    "file": "C:\\temp\\contacts.csv",
+    "confirm": false
+  }
+}
+```
+
+确认导入：
+
+```json
+{
+  "tool": "contacts_import",
+  "arguments": {
+    "file": "C:\\temp\\contacts.csv",
+    "confirm": true
+  }
+}
+```
+### 7.16 删除或替换日历事件附件
+
+```json
+{
+  "tool": "calendar_attachment_delete",
+  "arguments": {
+    "id": "<event-id>",
+    "attachmentId": "<attachment-id>"
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_attachment_replace",
+  "arguments": {
+    "id": "<event-id>",
+    "attachmentId": "<old-attachment-id>",
+    "file": "C:\\temp\\new.pdf"
+  }
+}
+```
+
+### 7.17 查询审计日志
+
+```json
+{
+  "tool": "audit_list",
+  "arguments": {
+    "limit": 20,
+    "action": "mail."
+  }
+}
+```
+### 7.18 邮件文件夹树与批量操作
+
+```json
+{
+  "tool": "mail_folder_tree",
+  "arguments": {
+    "top": 200
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_bulk_move",
+  "arguments": {
+    "ids": ["<id1>", "<id2>"],
+    "folder": "归档",
+    "confirm": true
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_attachment_bulk_delete",
+  "arguments": {
+    "id": "<event-id>",
+    "attachmentIds": ["<att1>", "<att2>"],
+    "confirm": true
+  }
+}
+```
+
+### 7.19 联系人 vCard 导入导出
+
+```json
+{
+  "tool": "contacts_export",
+  "arguments": {
+    "file": "C:\\temp\\contacts.vcf",
+    "format": "vcf"
+  }
+}
+```
+
+```json
+{
+  "tool": "contacts_import",
+  "arguments": {
+    "file": "C:\\temp\\contacts.vcf",
+    "format": "vcf",
+    "confirm": true
+  }
+}
+```
+### 7.20 邮箱设置
+
+```json
+{
+  "tool": "mailbox_settings_get",
+  "arguments": {}
+}
+```
+
+```json
+{
+  "tool": "mailbox_auto_reply_set",
+  "arguments": {
+    "status": "alwaysEnabled",
+    "internalMessage": "我正在休假",
+    "externalMessage": "I am out of office"
+  }
+}
+```
+
+### 7.21 高级邮件查询和保存视图
+
+```json
+{
+  "tool": "mail_query",
+  "arguments": {
+    "folder": "inbox",
+    "from": "noreply@example.com",
+    "unreadOnly": true,
+    "hasAttachment": true,
+    "after": "2026-10-01",
+    "top": 100
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_view_save",
+  "arguments": {
+    "name": "未读重要",
+    "from": "noreply@example.com",
+    "unreadOnly": true,
+    "top": 100
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_view_run",
+  "arguments": {
+    "name": "未读重要"
+  }
+}
+```
+
+## 8. MCP tool annotations 和结构化输出
+
+所有 MCP tools 都带有 annotations：
+
+- `readOnlyHint`：是否为只读工具
+- `destructiveHint`：是否可能执行删除、永久删除、规则回放等破坏性操作
+- `openWorldHint`：是否访问 Microsoft Graph 外部环境
+- `idempotentHint`：只读工具标记为幂等
+
+每个 tool 都有独立的 `outputSchema`：
+
+- `$id` 按 tool 名称生成
+- 顶层包含 `success`、`account`、`result`、`error`
+- 成功结果写入 `structuredContent.result`
+- 失败结果写入 `structuredContent.error`
+- 失败时会设置 `isError: true`
+
+统一错误码包括：
+
+```text
+unauthorized
+forbidden
+not_found
+rate_limited
+invalid_argument
+timeout
+network_error
+auth_error
+graph_error
+```
+
+客户端可据此决定是否要求用户确认，也可以根据错误码自动重试。
+
+## 9. 返回格式
 
 大多数 tools 返回 JSON 文本，外层通常包含：
 
@@ -506,7 +785,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 
 ID 都是 Graph 返回的不透明字符串，必须原样传递，不要自行截断或 URL 编码。
 
-## 9. 故障排查
+## 10. 故障排查
 
 ### 9.1 `auth_status` 显示刷新失败
 
@@ -544,15 +823,17 @@ Graph 请求层会自动重试临时网络错误、HTTP 429 和 5xx。若仍失�
 
 `attachments`、`file`、`outputPath` 等路径都相对于 MCP server 所在机器解析。建议使用绝对路径。
 
-## 10. 安全说明
+## 11. 安全说明
 
 - token-cache.bin 使用 Windows DPAPI 加密，只能由同一 Windows 用户解密
 - accounts.json 是可读账号元数据，不包含 token
 - 不要把 token-cache.bin 提交到仓库或发送给他人
+- `logs/audit.log` 记录关键写操作，不记录邮件正文、附件内容或 token
+- 当前审计日志默认单文件上限 10 MiB，保留最近 5 个历史文件，并清理 30 天前的日志。
 - MCP tools 可以读取本机指定路径并上传为附件，请只连接可信的 MCP 客户端
 - 永久删除、取消会议、发送邮件等操作不可逆，建议在自动化流程中增加人工确认
 
-## 11. 发布
+## 12. 发布
 
 GitHub Actions 在推送 `v*` tag 时构建 Windows amd64 二进制：
 
