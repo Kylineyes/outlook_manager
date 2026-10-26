@@ -119,6 +119,30 @@ type ContactInput struct {
 }
 
 // buildContactPayload 构造 Graph 联系人请求体。
+// ContactToInput 把联系人详情转换为更新输入。
+func ContactToInput(contact Contact) ContactInput {
+	return ContactInput{
+		DisplayName:      contact.DisplayName,
+		GivenName:        contact.GivenName,
+		Surname:          contact.Surname,
+		EmailAddresses:   append([]ContactEmailAddress(nil), contact.EmailAddresses...),
+		CompanyName:      contact.CompanyName,
+		JobTitle:         contact.JobTitle,
+		MobilePhone:      contact.MobilePhone,
+		BusinessPhones:   append([]string(nil), contact.BusinessPhones...),
+		NickName:         contact.NickName,
+		Birthday:         contact.Birthday,
+		PersonalNotes:    contact.PersonalNotes,
+		Department:       contact.Department,
+		OfficeLocation:   contact.OfficeLocation,
+		Profession:       contact.Profession,
+		BusinessHomePage: contact.BusinessHomePage,
+		HomeAddress:      contact.HomeAddress,
+		BusinessAddress:  contact.BusinessAddress,
+		OtherAddress:     contact.OtherAddress,
+	}
+}
+
 func buildContactPayload(input ContactInput) map[string]any {
 	payload := map[string]any{
 		"displayName": input.DisplayName,

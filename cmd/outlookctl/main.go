@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/auth"
 	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
@@ -93,6 +92,10 @@ func run(args []string) error {
 		return runAudit(args[1:])
 	case "doctor":
 		return runDoctor(args[1:])
+	case "sync":
+		return runSync(args[1:])
+	case "search", "local-search":
+		return runLocalSearch(args[1:])
 	case "version", "--version", "-v":
 		fmt.Fprintf(os.Stdout, "outlookctl %s\n", version)
 		return nil
@@ -114,15 +117,15 @@ func printGroupUsage(group string) {
 		fmt.Fprintln(os.Stdout, "用法: outlookctl account <list|use>")
 	case "mail":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl mail <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, query, view, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, query, view, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, export-eml, import-eml, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, bulk-mark-read, bulk-mark-unread, bulk-flag, bulk-unflag, bulk-importance, bulk-category-add, bulk-category-remove, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
 	case "calendar":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl calendar <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, attachment-delete, attachment-replace, attachment-bulk-delete, create, update, delete, cancel, respond")
+		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, attachment-delete, attachment-replace, attachment-bulk-delete, export-ics, import-ics, series-info, series-update, series-delete, freebusy, find-time, create, update, delete, cancel, respond")
 	case "contacts":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl contacts <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import, bulk-delete")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import, bulk-delete, duplicates")
 	case "audit":
-		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list>")
+		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list|export|stats|verify|config|cleanup>")
 	case "mailbox":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl mailbox <settings|auto-reply|timezone>")
 		fmt.Fprintln(os.Stdout, "子命令: settings, auto-reply get/set, timezone get/set")
@@ -140,8 +143,18 @@ func runAudit(args []string) error {
 		return errors.New("audit 需要指定子命令: list")
 	}
 	switch args[0] {
-	case "list":
+	case "list", "view":
 		return runAuditList(args[1:])
+	case "export":
+		return runAuditExport(args[1:])
+	case "stats":
+		return runAuditStats(args[1:])
+	case "verify":
+		return runAuditVerify(args[1:])
+	case "config":
+		return runAuditConfig(args[1:])
+	case "cleanup":
+		return runAuditCleanup(args[1:])
 	default:
 		printGroupUsage("audit")
 		return fmt.Errorf("未知 audit 子命令: %s", args[0])
@@ -150,33 +163,7 @@ func runAudit(args []string) error {
 
 // runAuditList 查询本地审计日志。
 func runAuditList(args []string) error {
-	fs := flag.NewFlagSet("audit list", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	limitFlag := fs.Int("limit", 50, "最多返回多少条记录")
-	actionFlag := fs.String("action", "", "按 action 前缀过滤")
-	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := parseCommandFlags(fs, args); err != nil {
-		return err
-	}
-	entries, err := audit.Entries(*limitFlag, *actionFlag)
-	if err != nil {
-		return err
-	}
-	if *jsonFlag {
-		data, err := json.MarshalIndent(entries, "", "  ")
-		if err != nil {
-			return fmt.Errorf("序列化审计日志失败: %w", err)
-		}
-		fmt.Fprintln(os.Stdout, string(data))
-		return nil
-	}
-	for _, entry := range entries {
-		timeText, _ := entry["time"].(string)
-		action, _ := entry["action"].(string)
-		data, _ := json.Marshal(entry)
-		fmt.Fprintf(os.Stdout, "%s | %s | %s\n", timeText, action, string(data))
-	}
-	return nil
+	return runAuditListQuery(args)
 }
 
 // runAuth 处理 auth 子命令。
@@ -409,6 +396,10 @@ func runMail(args []string) error {
 		return runMailAttachments(args[1:])
 	case "attachment-save":
 		return runMailAttachmentSave(args[1:])
+	case "export-eml":
+		return runMailExportEML(args[1:])
+	case "import-eml":
+		return runMailImportEML(args[1:])
 	case "reply":
 		return runMailReply(args[1:], false)
 	case "reply-all":
@@ -429,6 +420,20 @@ func runMail(args []string) error {
 		return runMailDraftAttachmentReplace(args[1:])
 	case "draft-attachment-bulk-delete":
 		return runMailDraftAttachmentBulkDelete(args[1:])
+	case "bulk-mark-read":
+		return runMailBulkMarkRead(args[1:], true)
+	case "bulk-mark-unread":
+		return runMailBulkMarkRead(args[1:], false)
+	case "bulk-flag":
+		return runMailBulkFlag(args[1:], true)
+	case "bulk-unflag":
+		return runMailBulkFlag(args[1:], false)
+	case "bulk-importance":
+		return runMailBulkImportance(args[1:])
+	case "bulk-category-add":
+		return runMailBulkCategory(args[1:], true)
+	case "bulk-category-remove":
+		return runMailBulkCategory(args[1:], false)
 	case "bulk-move":
 		return runMailBulkMove(args[1:])
 	case "bulk-delete":
@@ -1939,6 +1944,20 @@ func runCalendar(args []string) error {
 		return runCalendarAttachmentReplace(args[1:])
 	case "attachment-bulk-delete":
 		return runCalendarAttachmentBulkDelete(args[1:])
+	case "export-ics":
+		return runCalendarExportICS(args[1:])
+	case "import-ics":
+		return runCalendarImportICS(args[1:])
+	case "series-info":
+		return runCalendarSeriesInfo(args[1:])
+	case "series-update":
+		return runCalendarSeriesUpdate(args[1:])
+	case "series-delete":
+		return runCalendarSeriesDelete(args[1:])
+	case "freebusy":
+		return runCalendarFreeBusy(args[1:])
+	case "find-time":
+		return runCalendarFindTime(args[1:])
 	case "create":
 		return runCalendarCreate(args[1:])
 	case "update":
@@ -2076,6 +2095,8 @@ func runContacts(args []string) error {
 		return runContactsImport(args[1:])
 	case "bulk-delete":
 		return runContactsBulkDelete(args[1:])
+	case "duplicates":
+		return runContactsDuplicates(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("未知 contacts 子命令: %s", args[0])
@@ -4704,7 +4725,16 @@ func printUsage() {
   outlookctl mailbox timezone get         查看时区
   outlookctl mailbox timezone set         设置时区
   outlookctl doctor                        执行环境与账号诊断
+  outlookctl sync run                     同步本地索引
+  outlookctl sync status                  查看本地索引状态
+  outlookctl sync reset --confirm         删除本地索引
+  outlookctl search --query <关键字>       搜索本地索引
   outlookctl audit list [--limit 50]       查询本地审计日志
+  outlookctl audit export --out <文件> --format csv|json  导出审计日志
+  outlookctl audit stats                   审计统计
+  outlookctl audit verify                  校验审计哈希链
+  outlookctl audit config get|set          查看或设置保留策略
+  outlookctl audit cleanup                 清理过期审计日志
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail search --query <关键字>       搜索邮件
   outlookctl mail query --from <邮箱> --unread --has-attachment --after 2026-10-01  高级邮件查询
@@ -4718,12 +4748,21 @@ func printUsage() {
   outlookctl mail folder-tree                以树形列出邮件文件夹
   outlookctl mail bulk-move --ids <id1,id2> --folder <文件夹> [--confirm]  批量移动邮件
   outlookctl mail bulk-delete --ids <id1,id2> [--confirm]  批量删除邮件
+  outlookctl mail bulk-mark-read --ids <id1,id2> [--confirm]  批量标记已读
+  outlookctl mail bulk-mark-unread --ids <id1,id2> [--confirm]  批量标记未读
+  outlookctl mail bulk-flag --ids <id1,id2> [--confirm]  批量设置旗标
+  outlookctl mail bulk-unflag --ids <id1,id2> [--confirm]  批量取消旗标
+  outlookctl mail bulk-importance --ids <id1,id2> --level high [--confirm]  批量设置重要性
+  outlookctl mail bulk-category-add --ids <id1,id2> --category <名称> [--confirm]  批量添加类别
+  outlookctl mail bulk-category-remove --ids <id1,id2> --category <名称> [--confirm]  批量移除类别
   outlookctl mail draft-attachment-bulk-delete --id <草稿ID> --attachment-ids <id1,id2> [--confirm]  批量删除草稿附件
   outlookctl mail move <message-id> --folder <文件夹>  移动邮件
   outlookctl mail delete <message-id>        删除邮件
   outlookctl mail permanent-delete --id <邮件ID>  永久删除邮件
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
+  outlookctl mail export-eml <邮件ID> --out <文件>  导出 EML/MIME
+  outlookctl mail import-eml --file <EML文件> [--confirm]  导入 EML 为草稿
   outlookctl calendar list --days 7          查看未来日历事件
   outlookctl calendar calendars              列出日历
   outlookctl calendar attachments --id <事件ID>  列出事件附件
@@ -4733,6 +4772,13 @@ func printUsage() {
   outlookctl calendar attachment-replace --id <事件ID> --attachment-id <附件ID> --file <文件>  替换事件附件
   outlookctl calendar attachment-bulk-delete --id <事件ID> --attachment-ids <id1,id2> [--confirm]  批量删除事件附件
   outlookctl calendar list --calendar <名称或ID>  查看指定日历事件
+  outlookctl calendar export-ics --out <ICS文件>  导出日历事件
+  outlookctl calendar import-ics --file <ICS文件> [--confirm]  导入日历事件
+  outlookctl calendar series-info --id <事件ID>  查看重复事件信息
+  outlookctl calendar series-update --id <事件ID> --scope single|series  更新单次或整个系列
+  outlookctl calendar series-delete --id <事件ID> --scope single|series  删除单次或整个系列
+  outlookctl calendar freebusy --schedules <邮箱列表> --start <时间> --end <时间>  查询空闲状态
+  outlookctl calendar find-time --attendees <邮箱列表> --start <时间> --end <时间>  查找会议时间
   outlookctl calendar create --subject <主题> --start <时间> --end <时间>  创建事件
   outlookctl calendar update --id <事件ID> --subject <主题> --start <时间> --end <时间>  更新事件
   outlookctl calendar delete --id <事件ID>  删除事件
@@ -4756,6 +4802,8 @@ func printUsage() {
   outlookctl contacts export --out <CSV文件>  导出联系人
   outlookctl contacts import --file <CSV文件> [--confirm]  导入联系人
   outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]  批量删除联系人
+  outlookctl contacts duplicates scan --strategy email  扫描重复联系人
+  outlookctl contacts duplicates merge --strategy email [--confirm]  合并重复联系人
   outlookctl mail reply <message-id> --body <正文>           回复邮件
   outlookctl mail reply-all <message-id> --body <正文>       回复全部
   outlookctl mail forward <message-id> --to <邮箱>          转发邮件

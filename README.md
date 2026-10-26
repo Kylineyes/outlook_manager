@@ -11,13 +11,16 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱邮件列表
 - 单封邮件详情
 - 邮件搜索
+- 批量邮件状态操作（已读、旗标、重要性、类别）
 - 高级邮件查询
 - 保存邮件视图
 - 邮箱设置管理（自动回复、时区、语言、工作时间）
 - 邮件分页全量拉取
 - Graph 与 token 请求临时错误自动重试
 - CLI 子命令 --help 体系
-- 本地操作审计日志（轮转与查询）
+- 本地操作审计日志（轮转、查询、导出、统计与哈希链校验）
+- 审计保留策略配置与手动清理
+- 本地索引、增量同步与离线搜索
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -31,6 +34,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件永久删除
 - 邮件附件列表
 - 邮件附件下载
+- EML/MIME 邮件导出与导入为草稿
 - 邮件发送附件
 - 邮件大附件上传（3 MiB - 150 MiB，自动使用上传会话）
 - 邮件发送选项（重要性、已读回执、送达回执）
@@ -42,6 +46,9 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 主类别管理
 - 主类别颜色更新
 - 日历事件读取
+- 日历事件 ICS 导入导出
+- 重复日历事件系列信息与单次/系列更新删除
+- 日历空闲/忙碌与会议时间查询
 - 多日历列表与按日历查询事件
 - 日历事件创建、更新、删除
 - 日历参与人与提醒
@@ -54,6 +61,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 联系人读取
 - 联系人创建、更新、删除
 - 联系人搜索
+- 联系人重复检测与合并
 - 日历重复事件
 - 联系人文件夹管理
 - 联系人文件夹重命名
@@ -72,6 +80,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - MCP tool annotations（只读/破坏性提示）
 - MCP 结构化输出（outputSchema / structuredContent / 统一错误码）
 - MCP 每个 tool 独立 schema 和结构化错误结果
+- mock Graph 集成测试、golden 测试和解析器 fuzz 测试
+- 并发/竞态测试、benchmark 与 CI 覆盖率流程
 - CLI doctor 环境与账号诊断
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
@@ -169,6 +179,13 @@ outlookctl calendar delete --id <事件ID>
 outlookctl calendar cancel --id <事件ID> --comment "取消说明"
 outlookctl calendar respond --id <事件ID> --response accept
 outlookctl calendar forward --id <事件ID> --to someone@example.com
+outlookctl calendar export-ics --out C:\temp\calendar.ics
+outlookctl calendar import-ics --file C:\temp\calendar.ics --confirm
+outlookctl calendar series-info --id <事件ID>
+outlookctl calendar series-update --id <事件ID> --scope series --subject "新主题"
+outlookctl calendar series-delete --id <事件ID> --scope single
+outlookctl calendar freebusy --schedules someone@example.com --start 2026-11-01T00:00:00Z --end 2026-11-02T00:00:00Z
+outlookctl calendar find-time --attendees someone@example.com --start 2026-11-01T00:00:00Z --end 2026-11-02T00:00:00Z --duration 60
 outlookctl contacts list --top 20
 outlookctl contacts list --folder "客户" --top 20
 outlookctl contacts search --query "张"
@@ -185,6 +202,8 @@ outlookctl contacts export --out C:\temp\contacts.csv
 outlookctl contacts import --file C:\temp\contacts.csv --confirm
 outlookctl contacts export --out C:\temp\contacts.vcf --format vcf
 outlookctl contacts import --file C:\temp\contacts.vcf --format vcf --confirm
+outlookctl contacts duplicates scan --strategy email
+outlookctl contacts duplicates merge --strategy email --confirm
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl contacts permanent-delete --id <联系人ID>
@@ -211,13 +230,16 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 87 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 115 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
 - 邮件附件、文件夹、类别、旗标和重要性
 - 收件箱规则与主类别
 - 日历事件、日历列表、事件附件和邀请响应
+- 日历 ICS 导入导出、重复事件系列和空闲查询
+- 联系人重复检测与合并
+- 本地索引、增量同步和离线搜索
 - 联系人、联系人文件夹、地址和照片
 
 完整的 MCP 客户端配置、工具参数、调用示例和故障排查见：
@@ -246,6 +268,8 @@ docs/mcp.md
 - `logs\auth.log`：预留的认证日志位置
 - `logs\audit.log`：JSON Lines 操作审计日志
 - `views.json`：保存的邮件查询视图
+- `index.json`：邮件、联系人和日历的本地索引
+- `audit-config.json`：审计日志轮转和保留策略
 
 查询审计日志：
 
@@ -254,8 +278,23 @@ outlookctl audit list --limit 20
 outlookctl doctor
 outlookctl mail folder-tree
 outlookctl mail bulk-delete --ids <id1,id2> [--confirm]
+outlookctl mail bulk-mark-read --ids <id1,id2> [--confirm]
+outlookctl mail bulk-flag --ids <id1,id2> [--confirm]
+outlookctl mail bulk-importance --ids <id1,id2> --level high [--confirm]
+outlookctl mail bulk-category-add --ids <id1,id2> --category <名称> [--confirm]
+outlookctl mail export-eml <邮件ID> --out C:\temp\mail.eml
+outlookctl mail import-eml --file C:\temp\mail.eml --confirm
 outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]
+outlookctl sync run
+outlookctl sync status
+outlookctl sync reset --confirm
+outlookctl search --query <关键字> --type all
 outlookctl audit list --action mail. --json
+outlookctl audit export --out C:\temp\audit.csv --format csv
+outlookctl audit stats --json
+outlookctl audit verify --json
+outlookctl audit config set --max-size-mb 10 --max-backups 5 --retention-days 30
+outlookctl audit cleanup
 ```
 
 ## 开发

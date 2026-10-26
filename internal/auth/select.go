@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/store"
 )
 
@@ -22,6 +23,7 @@ func SelectAccount(accounts []Account, target string) (Account, error) {
 	if target != "" {
 		for _, account := range accounts {
 			if strings.EqualFold(account.Username, target) || account.HomeAccountID == target {
+				audit.SetAccount(account.Username)
 				return account, nil
 			}
 		}
@@ -32,9 +34,11 @@ func SelectAccount(accounts []Account, target string) (Account, error) {
 	if err == nil && accountsFile.DefaultAccount != "" {
 		for _, account := range accounts {
 			if strings.EqualFold(account.Username, accountsFile.DefaultAccount) {
+				audit.SetAccount(account.Username)
 				return account, nil
 			}
 		}
 	}
+	audit.SetAccount(accounts[0].Username)
 	return accounts[0], nil
 }

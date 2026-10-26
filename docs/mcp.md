@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 87 个 MCP tools 的分组说明
+- 115 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 87 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 115 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -171,7 +171,13 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mailbox_auto_reply_set` | 设置自动回复 | `status`、`internalMessage`、`externalMessage`、`externalAudience`、`start`、`end`、`timeZone`、`account` |
 | `mailbox_timezone_get` | 读取邮箱时区 | `account` |
 | `mailbox_timezone_set` | 设置邮箱时区 | `value`、`account` |
-| `audit_list` | 查询本地审计日志 | `limit`、`action` |
+| `audit_list` | 查询本地审计日志 | `limit`、`action`、`account`、`query`、`since`、`until` |
+| `audit_export` | 导出审计日志 | `file`、`format`、查询过滤参数 |
+| `audit_stats` | 审计统计 | 查询过滤参数 |
+| `audit_verify` | 校验审计哈希链 | 无 |
+| `audit_config_get` | 读取审计配置 | 无 |
+| `audit_config_set` | 设置审计配置 | `maxSizeMB`、`maxBackups`、`retentionDays` |
+| `audit_cleanup` | 清理过期审计日志 | 无 |
 
 ### 6.2 邮件读取与查询
 
@@ -189,6 +195,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_folder_tree` | 树形列出邮件文件夹 | `top`、`account` |
 | `mail_attachments_list` | 列出邮件附件 | `id`、`account` |
 | `mail_attachment_save` | 下载邮件附件到本地 | `id`、`attachmentId`、`outputPath`、`account` |
+| `mail_export_eml` | 导出邮件为 EML/MIME 文件 | `id`、`file`、`account` |
+| `mail_import_eml` | 从 EML 导入为草稿，默认 dry-run | `file`、`confirm`、`account` |
 | `mail_message_categories` | 列出单封邮件的类别 | `id`、`account` |
 | `mail_rules_list` | 列出收件箱规则 | `account` |
 | `mail_master_categories_list` | 列出主类别 | `account` |
@@ -217,6 +225,13 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_delete` | 移动到已删除邮件 | `id`、`account` |
 | `mail_bulk_move` | 批量移动邮件，默认 dry-run | `ids`、`folder`、`confirm`、`account` |
 | `mail_bulk_delete` | 批量删除邮件，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_mark_read` | 批量标记已读，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_mark_unread` | 批量标记未读，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_flag` | 批量设置旗标，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_unflag` | 批量取消旗标，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_set_importance` | 批量设置重要性，默认 dry-run | `ids`、`level`、`confirm`、`account` |
+| `mail_bulk_category_add` | 批量添加类别，默认 dry-run | `ids`、`category`、`confirm`、`account` |
+| `mail_bulk_category_remove` | 批量移除类别，默认 dry-run | `ids`、`category`、`confirm`、`account` |
 | `mail_permanent_delete` | 永久删除邮件 | `id`、`account` |
 | `mail_category_add` | 给邮件添加类别 | `id`、`category`、`account` |
 | `mail_category_remove` | 移除邮件类别 | `id`、`category`、`account` |
@@ -245,6 +260,13 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `calendar_cancel` | 取消日历事件 | `id`、`comment`、`account` |
 | `calendar_respond` | 响应日历邀请 | `id`、`response`（accept/decline/tentative）、`comment`、`account` |
 | `calendar_forward` | 转发日历事件 | `id`、`to`、`comment`、`account` |
+| `calendar_export_ics` | 导出日历事件为 ICS | `file`、`calendar`、`max`、`account` |
+| `calendar_import_ics` | 从 ICS 导入事件，默认 dry-run | `file`、`confirm`、`max`、`account` |
+| `calendar_series_info` | 查看重复事件系列信息 | `id`、`account` |
+| `calendar_series_update` | 更新单次事件或整个系列 | `id`、`scope`、`subject`、`start`、`end`、`timeZone`、`location`、`body`、`categories`、`showAs`、`importance`、`sensitivity`、`account` |
+| `calendar_series_delete` | 删除单次事件或整个系列 | `id`、`scope`、`account` |
+| `calendar_free_busy` | 查询空闲/忙碌状态 | `schedules`、`start`、`end`、`interval`、`account` |
+| `calendar_find_meeting_times` | 查询共同空闲会议时间 | `attendees`、`start`、`end`、`duration`、`max`、`account` |
 | `calendar_attachments_list` | 列出事件附件 | `id`、`account` |
 | `calendar_attachment_add` | 给事件添加附件 | `id`、`file`、`account` |
 | `calendar_attachment_get` | 下载事件附件 | `id`、`attachmentId`、`account` |
@@ -275,6 +297,12 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `contacts_photo_get` | 读取联系人照片 | `id`、`account` |
 | `contacts_photo_set` | 设置联系人照片 | `id`、`file`、`account` |
 | `contacts_bulk_delete` | 批量删除联系人，默认 dry-run | `ids`、`confirm`、`account` |
+| `contacts_duplicates_scan` | 扫描重复联系人 | `strategy`、`folder`、`max`、`account` |
+| `contacts_duplicates_merge` | 合并重复联系人，默认 dry-run | `strategy`、`folder`、`max`、`confirm`、`account` |
+| `sync_run` | 同步本地索引，delta 不可用时回退全量 | `mail`、`contacts`、`events`、`max`、`account` |
+| `sync_status` | 查看本地索引状态 | 无 |
+| `sync_reset` | 删除本地索引 | `confirm` |
+| `local_search` | 搜索本地索引 | `query`、`type`、`limit` |
 | `contacts_export` | 导出联系人到 CSV 或 vCard | `file`、`format`、`folder`、`max`、`account` |
 | `contacts_import` | 从 CSV 或 vCard 导入联系人 | `file`、`format`、`folder`、`max`、`confirm`、`account` |
 
@@ -727,6 +755,164 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
   "tool": "mail_view_run",
   "arguments": {
     "name": "未读重要"
+  }
+}
+```
+
+### 7.22 批量邮件状态操作
+
+```json
+{
+  "tool": "mail_bulk_mark_read",
+  "arguments": {
+    "ids": ["<id1>", "<id2>"],
+    "confirm": true
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_bulk_set_importance",
+  "arguments": {
+    "ids": ["<id1>", "<id2>"],
+    "level": "high",
+    "confirm": true
+  }
+}
+```
+
+### 7.23 EML/MIME 导入导出
+
+```json
+{
+  "tool": "mail_export_eml",
+  "arguments": {
+    "id": "<message-id>",
+    "file": "C:\\temp\\mail.eml"
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_import_eml",
+  "arguments": {
+    "file": "C:\\temp\\mail.eml",
+    "confirm": true
+  }
+}
+```
+
+### 7.24 日历 ICS、系列和空闲查询
+
+```json
+{
+  "tool": "calendar_export_ics",
+  "arguments": {
+    "file": "C:\\temp\\calendar.ics"
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_series_update",
+  "arguments": {
+    "id": "<event-id>",
+    "scope": "series",
+    "subject": "新的系列主题"
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_free_busy",
+  "arguments": {
+    "schedules": ["someone@example.com"],
+    "start": "2026-11-01T00:00:00Z",
+    "end": "2026-11-02T00:00:00Z"
+  }
+}
+```
+
+### 7.25 联系人重复合并
+
+```json
+{
+  "tool": "contacts_duplicates_scan",
+  "arguments": {
+    "strategy": "email"
+  }
+}
+```
+
+```json
+{
+  "tool": "contacts_duplicates_merge",
+  "arguments": {
+    "strategy": "email",
+    "confirm": true
+  }
+}
+```
+
+### 7.26 本地索引和离线搜索
+
+```json
+{
+  "tool": "sync_run",
+  "arguments": {
+    "mail": true,
+    "contacts": true,
+    "events": true,
+    "max": 1000
+  }
+}
+```
+
+```json
+{
+  "tool": "local_search",
+  "arguments": {
+    "query": "账单",
+    "type": "all",
+    "limit": 20
+  }
+}
+```
+
+> 个人 Microsoft 账号可能不支持部分 Graph delta 端点；此时 `sync_run` 会自动回退为全量同步，并在 `warnings` 中说明。
+
+### 7.27 审计日志增强
+
+```json
+{
+  "tool": "audit_export",
+  "arguments": {
+    "file": "C:\\temp\\audit.csv",
+    "format": "csv",
+    "account": "someone@example.com",
+    "since": "2026-01-01"
+  }
+}
+```
+
+```json
+{
+  "tool": "audit_verify",
+  "arguments": {}
+}
+```
+
+```json
+{
+  "tool": "audit_config_set",
+  "arguments": {
+    "maxSizeMB": 10,
+    "maxBackups": 5,
+    "retentionDays": 30
   }
 }
 ```
