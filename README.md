@@ -18,7 +18,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件分页全量拉取
 - Graph 与 token 请求临时错误自动重试
 - CLI 子命令 --help 体系
-- 本地操作审计日志（轮转与查询）
+- 本地操作审计日志（轮转、查询、导出、统计与哈希链校验）
+- 审计保留策略配置与手动清理
 - 本地索引、增量同步与离线搜索
 - 发送邮件
 - 回复、回复全部、转发
@@ -79,6 +80,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - MCP tool annotations（只读/破坏性提示）
 - MCP 结构化输出（outputSchema / structuredContent / 统一错误码）
 - MCP 每个 tool 独立 schema 和结构化错误结果
+- mock Graph 集成测试、golden 测试和解析器 fuzz 测试
+- 并发/竞态测试、benchmark 与 CI 覆盖率流程
 - CLI doctor 环境与账号诊断
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 
@@ -227,7 +230,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 109 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 115 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -266,6 +269,7 @@ docs/mcp.md
 - `logs\audit.log`：JSON Lines 操作审计日志
 - `views.json`：保存的邮件查询视图
 - `index.json`：邮件、联系人和日历的本地索引
+- `audit-config.json`：审计日志轮转和保留策略
 
 查询审计日志：
 
@@ -286,6 +290,11 @@ outlookctl sync status
 outlookctl sync reset --confirm
 outlookctl search --query <关键字> --type all
 outlookctl audit list --action mail. --json
+outlookctl audit export --out C:\temp\audit.csv --format csv
+outlookctl audit stats --json
+outlookctl audit verify --json
+outlookctl audit config set --max-size-mb 10 --max-backups 5 --retention-days 30
+outlookctl audit cleanup
 ```
 
 ## 开发

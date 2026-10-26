@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 109 个 MCP tools 的分组说明
+- 115 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 109 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 115 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -171,7 +171,13 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mailbox_auto_reply_set` | 设置自动回复 | `status`、`internalMessage`、`externalMessage`、`externalAudience`、`start`、`end`、`timeZone`、`account` |
 | `mailbox_timezone_get` | 读取邮箱时区 | `account` |
 | `mailbox_timezone_set` | 设置邮箱时区 | `value`、`account` |
-| `audit_list` | 查询本地审计日志 | `limit`、`action` |
+| `audit_list` | 查询本地审计日志 | `limit`、`action`、`account`、`query`、`since`、`until` |
+| `audit_export` | 导出审计日志 | `file`、`format`、查询过滤参数 |
+| `audit_stats` | 审计统计 | 查询过滤参数 |
+| `audit_verify` | 校验审计哈希链 | 无 |
+| `audit_config_get` | 读取审计配置 | 无 |
+| `audit_config_set` | 设置审计配置 | `maxSizeMB`、`maxBackups`、`retentionDays` |
+| `audit_cleanup` | 清理过期审计日志 | 无 |
 
 ### 6.2 邮件读取与查询
 
@@ -878,6 +884,38 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 ```
 
 > 个人 Microsoft 账号可能不支持部分 Graph delta 端点；此时 `sync_run` 会自动回退为全量同步，并在 `warnings` 中说明。
+
+### 7.27 审计日志增强
+
+```json
+{
+  "tool": "audit_export",
+  "arguments": {
+    "file": "C:\\temp\\audit.csv",
+    "format": "csv",
+    "account": "someone@example.com",
+    "since": "2026-01-01"
+  }
+}
+```
+
+```json
+{
+  "tool": "audit_verify",
+  "arguments": {}
+}
+```
+
+```json
+{
+  "tool": "audit_config_set",
+  "arguments": {
+    "maxSizeMB": 10,
+    "maxBackups": 5,
+    "retentionDays": 30
+  }
+}
+```
 
 ## 8. MCP tool annotations 和结构化输出
 

@@ -17,16 +17,19 @@
 - 本地邮件、联系人、日历索引
 - Graph delta 增量同步，失败时自动回退全量同步
 - 本地离线搜索
-- 审计日志、轮转和查询
+- 审计日志轮转、查询、CSV/JSON 导出、账号/时间/动作过滤
+- 审计统计、哈希链校验、保留策略配置和手动清理
 - CLI 子命令帮助体系
 - MCP annotations、结构化输出、独立 outputSchema 和统一错误码
 - 邮箱设置管理（自动回复、时区、语言、工作时间）
 - 高级邮件查询和保存视图
+- mock Graph 集成测试、golden 测试、解析器 fuzz 测试
+- 并发/竞态测试、benchmark 和 CI 覆盖率流程
 - MCP / CLI 文档和诊断命令
 
 ## 待开发事项
 
-剩余事项主要是工程化、体验和发布能力。
+剩余事项主要是发布工程和更深的交互体验。
 
 ### 1. CLI 体验增强
 
@@ -42,35 +45,8 @@
 - --output table|json|yaml
 - 命令别名
 
-### 2. 审计日志增强
+### 2. 发布与分发
 
-- 导出 CSV / JSON
-- 按账号过滤
-- 按时间范围过滤
-- 按动作类型过滤
-- 统计报告
-- 日志签名
-- 审计清理策略配置
-- 审计查看 TUI
-
-### 3. 测试与质量工程
-
-- mock Graph 集成测试
-- Graph 响应 golden files
-- CSV / vCard / EML / ICS fuzz 测试
-- 大附件上传断点续传测试
-- MCP tool contract tests
-- 并发测试
-- race 测试
-- 性能 benchmark
-- 覆盖率报告
-- CI 上强制测试
-
-### 4. 发布与分发
-
-- CI 自动执行 go vet / go test
-- CHANGELOG 自动生成
-- Release Notes 模板
 - Scoop 安装包
 - Winget 包
 - 安装脚本
@@ -78,6 +54,8 @@
 - arm64 构建
 - 版本信息嵌入
 - 自动更新检查
+- Release Notes 模板
+- CHANGELOG 自动生成
 
 ## 需要第二个测试账号
 
@@ -96,3 +74,5 @@
 - Graph 不支持 Outlook contact photo 删除。
 - 个人账号在线会议当前可能返回 `onlineMeetingProvider: unknown`。
 - Graph 没有官方 run rules now 端点，当前使用本地回放实现。
+- 审计账号过滤对升级前没有 `account` 字段的旧记录不生效。
+- 审计哈希链只覆盖升级后的新记录，旧记录会在 `audit verify` 中计为 legacy。
