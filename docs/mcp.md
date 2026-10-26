@@ -59,7 +59,7 @@ go build -trimpath -ldflags "-s -w" -o outlook-mcp.exe ./cmd/outlook-mcp
 
 - `config.json` 保存默认账号和 scopes
 - `accounts.json` 保存可读账号档案，不包含 token
-- `token-cache.bin` 使用 Windows DPAPI 加密
+- `token-cache.bin` 使用系统安全存储加密（Windows DPAPI / Linux Secret Service / macOS Keychain）
 
 MCP server 只读取上述本地文件，不会接收或输出明文密码。
 
@@ -1011,7 +1011,7 @@ Graph 请求层会自动重试临时网络错误、HTTP 429 和 5xx。若仍失�
 
 ## 11. 安全说明
 
-- token-cache.bin 使用 Windows DPAPI 加密，只能由同一 Windows 用户解密
+- token-cache.bin 使用系统安全存储加密；Windows 只能由同一用户解密，Linux/macOS 通过系统钥匙串保护密钥
 - accounts.json 是可读账号元数据，不包含 token
 - 不要把 token-cache.bin 提交到仓库或发送给他人
 - `logs/audit.log` 记录关键写操作，不记录邮件正文、附件内容或 token

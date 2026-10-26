@@ -4,7 +4,7 @@
 
 ## 已完成的关键方向
 
-- Device Code 登录、多账号、DPAPI token 持久化
+- Device Code 登录、多账号、跨平台安全存储 token 持久化（DPAPI / Secret Service / Keychain）
 - 邮件读取、搜索、发送、回复、转发、草稿、附件、文件夹、规则、主类别
 - 批量邮件移动、删除、已读/未读、旗标、重要性、类别操作
 - 邮件 EML/MIME 导出，以及 EML 导入为草稿

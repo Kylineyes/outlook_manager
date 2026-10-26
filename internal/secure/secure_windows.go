@@ -35,3 +35,24 @@ func Decrypt(encrypted []byte) ([]byte, error) {
 	}
 	return plain, nil
 }
+
+// Check 验证当前用户下的 DPAPI 加解密是否可用。
+func Check() error {
+	encrypted, err := Encrypt([]byte("outlook-manager-doctor"))
+	if err != nil {
+		return err
+	}
+	plain, err := Decrypt(encrypted)
+	if err != nil {
+		return err
+	}
+	if string(plain) != "outlook-manager-doctor" {
+		return fmt.Errorf("DPAPI 自检结果不一致")
+	}
+	return nil
+}
+
+// Backend 返回安全存储后端名称。
+func Backend() string {
+	return "Windows DPAPI"
+}

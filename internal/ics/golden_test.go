@@ -38,8 +38,9 @@ func TestGoldenExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	goldenPath := filepath.Join("testdata", "calendar.golden.ics")
+	got := bytes.ReplaceAll(buffer.Bytes(), []byte("\r\n"), []byte("\n"))
 	if *updateGolden {
-		if err := os.WriteFile(goldenPath, buffer.Bytes(), 0o600); err != nil {
+		if err := os.WriteFile(goldenPath, got, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -47,7 +48,8 @@ func TestGoldenExport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(buffer.Bytes(), expected) {
-		t.Fatalf("golden mismatch:\n--- got ---\n%s\n--- want ---\n%s", buffer.String(), string(expected))
+	expected = bytes.ReplaceAll(expected, []byte("\r\n"), []byte("\n"))
+	if !bytes.Equal(got, expected) {
+		t.Fatalf("golden mismatch:\n--- got ---\n%s\n--- want ---\n%s", string(got), string(expected))
 	}
 }

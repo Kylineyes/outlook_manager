@@ -7,6 +7,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 当前已实现：
 
 - Device Code 登录与 token 加密持久化
+- 跨平台安全存储（Windows DPAPI / Linux Secret Service / macOS Keychain）
+- Linux 需要可用的 Secret Service（GNOME Keyring、KWallet 等）
 - 多账号账号档案与默认账号切换
 - 收件箱邮件列表
 - 单封邮件详情
@@ -264,7 +266,7 @@ docs/mcp.md
 
 - `config.json`：公开认证配置，不保存秘密
 - `accounts.json`：可读账号档案，不保存 token
-- `token-cache.bin`：DPAPI 加密后的 access token 和 refresh token
+- `token-cache.bin`：系统安全存储加密后的 access token 和 refresh token
 - `logs\auth.log`：预留的认证日志位置
 - `logs\audit.log`：JSON Lines 操作审计日志
 - `views.json`：保存的邮件查询视图

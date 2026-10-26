@@ -22,7 +22,7 @@ Outlook Manager 是一个本地工具，通过 Microsoft Graph 官方 API 操作
 - 认证：直接调用 Microsoft 身份平台 OAuth2 Device Code Flow；不使用 MSAL Go，因为其对个人账号的 `offline_access` 存在已知误判。
 - Graph：`github.com/microsoftgraph/msgraph-sdk-go`，必要时直接调用 Microsoft Graph REST API。
 - MCP：`github.com/modelcontextprotocol/go-sdk`。
-- 本地加密：Windows 下使用 DPAPI，保护 token cache。
+- 本地加密：Windows 使用 DPAPI，Linux 使用 Secret Service，macOS 使用 Keychain，保护 token cache。
 - 模块路径：`github.com/Kylineyes/outlook-manager`。
 
 ### 3.2 目录结构
@@ -36,7 +36,7 @@ outlook_manager/
 │   ├── auth/                # 登录、多账号、token 刷新
 │   ├── graph/               # Microsoft Graph 业务封装
 │   ├── store/               # 本地配置与账号档案
-│   └── secure/              # DPAPI 等安全存储
+│   └── secure/              # DPAPI / Secret Service / Keychain 安全存储
 ├── docs/
 │   └── mcp.md             # MCP 使用指南
 ├── .github/workflows/       # GitHub Actions
@@ -51,7 +51,7 @@ outlook_manager/
 
 - `config.json`：公开配置，例如 clientId、authority、scopes，不保存密钥。
 - `accounts.json`：账号档案，可读，便于人工确认，不保存 token。
-- `token-cache.bin`：OAuth token cache，Windows 下使用 DPAPI 当前用户加密。
+- `token-cache.bin`：OAuth token cache，使用系统安全存储加密（Windows DPAPI / Linux Secret Service / macOS Keychain）。
 - `logs\auth.log`：登录、刷新、失败日志，不记录 token。
 - `logs\audit.log`：关键写操作的 JSON Lines 审计日志，不记录正文、附件或 token；默认 10 MiB 轮转，保留 5 个历史文件，清理 30 天前日志。
 - `views.json`：保存的邮件查询视图。
