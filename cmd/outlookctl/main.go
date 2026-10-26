@@ -92,6 +92,8 @@ func run(args []string) error {
 		return runAudit(args[1:])
 	case "doctor":
 		return runDoctor(args[1:])
+	case "update":
+		return runUpdate(args[1:])
 	case "sync":
 		return runSync(args[1:])
 	case "search", "local-search":
@@ -4725,6 +4727,7 @@ func printUsage() {
   outlookctl mailbox timezone get         查看时区
   outlookctl mailbox timezone set         设置时区
   outlookctl doctor                        执行环境与账号诊断
+  outlookctl update check                  检查 GitHub 最新版本
   outlookctl sync run                     同步本地索引
   outlookctl sync status                  查看本地索引状态
   outlookctl sync reset --confirm         删除本地索引

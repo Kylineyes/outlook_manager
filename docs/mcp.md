@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 115 个 MCP tools 的分组说明
+- 116 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -59,7 +59,7 @@ go build -trimpath -ldflags "-s -w" -o outlook-mcp.exe ./cmd/outlook-mcp
 
 - `config.json` 保存默认账号和 scopes
 - `accounts.json` 保存可读账号档案，不包含 token
-- `token-cache.bin` 使用 Windows DPAPI 加密
+- `token-cache.bin` 使用系统安全存储加密（Windows DPAPI / Linux Secret Service / macOS Keychain）
 
 MCP server 只读取上述本地文件，不会接收或输出明文密码。
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 115 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 116 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -178,6 +178,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `audit_config_get` | 读取审计配置 | 无 |
 | `audit_config_set` | 设置审计配置 | `maxSizeMB`、`maxBackups`、`retentionDays` |
 | `audit_cleanup` | 清理过期审计日志 | 无 |
+| `update_check` | 检查 GitHub 最新发布版本 | 无 |
 
 ### 6.2 邮件读取与查询
 
@@ -917,6 +918,15 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 }
 ```
 
+### 7.28 自动更新检查
+
+```json
+{
+  "tool": "update_check",
+  "arguments": {}
+}
+```
+
 ## 8. MCP tool annotations 和结构化输出
 
 所有 MCP tools 都带有 annotations：
@@ -1011,7 +1021,7 @@ Graph 请求层会自动重试临时网络错误、HTTP 429 和 5xx。若仍失�
 
 ## 11. 安全说明
 
-- token-cache.bin 使用 Windows DPAPI 加密，只能由同一 Windows 用户解密
+- token-cache.bin 使用系统安全存储加密；Windows 只能由同一用户解密，Linux/macOS 通过系统钥匙串保护密钥
 - accounts.json 是可读账号元数据，不包含 token
 - 不要把 token-cache.bin 提交到仓库或发送给他人
 - `logs/audit.log` 记录关键写操作，不记录邮件正文、附件内容或 token

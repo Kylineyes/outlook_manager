@@ -7,6 +7,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 当前已实现：
 
 - Device Code 登录与 token 加密持久化
+- 跨平台安全存储（Windows DPAPI / Linux Secret Service / macOS Keychain）
+- Linux 需要可用的 Secret Service（GNOME Keyring、KWallet 等）
 - 多账号账号档案与默认账号切换
 - 收件箱邮件列表
 - 单封邮件详情
@@ -230,7 +232,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 115 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 116 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -248,6 +250,8 @@ outlookctl mail importance <message-id> --level high
 docs/mcp.md
 ```
 
+发布签名和校验说明见 `docs/release-signing.md`，版本变更见 `CHANGELOG.md`。
+
 双账号日历验证计划见：`docs/calendar-invite-test-plan.md`。
 
 后续开发计划见 `ROADMAP.md`。
@@ -264,7 +268,7 @@ docs/mcp.md
 
 - `config.json`：公开认证配置，不保存秘密
 - `accounts.json`：可读账号档案，不保存 token
-- `token-cache.bin`：DPAPI 加密后的 access token 和 refresh token
+- `token-cache.bin`：系统安全存储加密后的 access token 和 refresh token
 - `logs\auth.log`：预留的认证日志位置
 - `logs\audit.log`：JSON Lines 操作审计日志
 - `views.json`：保存的邮件查询视图
@@ -295,7 +299,10 @@ outlookctl audit stats --json
 outlookctl audit verify --json
 outlookctl audit config set --max-size-mb 10 --max-backups 5 --retention-days 30
 outlookctl audit cleanup
+outlookctl update check
 ```
+
+如果 GitHub API 限流或仓库为私有，可设置 `GITHUB_TOKEN` 或 `GH_TOKEN`。
 
 ## 开发
 

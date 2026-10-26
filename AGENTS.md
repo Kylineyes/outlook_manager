@@ -22,7 +22,7 @@ Outlook Manager 是一个本地工具，通过 Microsoft Graph 官方 API 操作
 - 认证：直接调用 Microsoft 身份平台 OAuth2 Device Code Flow；不使用 MSAL Go，因为其对个人账号的 `offline_access` 存在已知误判。
 - Graph：`github.com/microsoftgraph/msgraph-sdk-go`，必要时直接调用 Microsoft Graph REST API。
 - MCP：`github.com/modelcontextprotocol/go-sdk`。
-- 本地加密：Windows 下使用 DPAPI，保护 token cache。
+- 本地加密：Windows 使用 DPAPI，Linux 使用 Secret Service，macOS 使用 Keychain，保护 token cache。
 - 模块路径：`github.com/Kylineyes/outlook-manager`。
 
 ### 3.2 目录结构
@@ -36,7 +36,7 @@ outlook_manager/
 │   ├── auth/                # 登录、多账号、token 刷新
 │   ├── graph/               # Microsoft Graph 业务封装
 │   ├── store/               # 本地配置与账号档案
-│   └── secure/              # DPAPI 等安全存储
+│   └── secure/              # DPAPI / Secret Service / Keychain 安全存储
 ├── docs/
 │   └── mcp.md             # MCP 使用指南
 ├── .github/workflows/       # GitHub Actions
@@ -51,7 +51,7 @@ outlook_manager/
 
 - `config.json`：公开配置，例如 clientId、authority、scopes，不保存密钥。
 - `accounts.json`：账号档案，可读，便于人工确认，不保存 token。
-- `token-cache.bin`：OAuth token cache，Windows 下使用 DPAPI 当前用户加密。
+- `token-cache.bin`：OAuth token cache，使用系统安全存储加密（Windows DPAPI / Linux Secret Service / macOS Keychain）。
 - `logs\auth.log`：登录、刷新、失败日志，不记录 token。
 - `logs\audit.log`：关键写操作的 JSON Lines 审计日志，不记录正文、附件或 token；默认 10 MiB 轮转，保留 5 个历史文件，清理 30 天前日志。
 - `views.json`：保存的邮件查询视图。
@@ -71,6 +71,7 @@ outlook_manager/
 - `outlookctl audit config`
 - `outlookctl audit cleanup`
 - `outlookctl doctor`
+- `outlookctl update check`
 - `outlookctl sync run`
 - `outlookctl sync status`
 - `outlookctl sync reset`
@@ -171,7 +172,7 @@ outlook_manager/
 - `outlookctl contacts permanent-delete`
 - `outlookctl contacts photo-get`
 - `outlookctl contacts photo-set`
-- 对应的 MCP 工具：`account_list`、`auth_status`、`audit_list`、`audit_export`、`audit_stats`、`audit_verify`、`audit_config_get`、`audit_config_set`、`audit_cleanup`、`mailbox_settings_get`、`mailbox_auto_reply_get`、`mailbox_auto_reply_set`、`mailbox_timezone_get`、`mailbox_timezone_set`、`mail_query`、`mail_view_save`、`mail_view_list`、`mail_view_run`、`mail_view_delete`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_folder_tree`、`mail_bulk_move`、`mail_bulk_delete`、`mail_bulk_mark_read`、`mail_bulk_mark_unread`、`mail_bulk_flag`、`mail_bulk_unflag`、`mail_bulk_set_importance`、`mail_bulk_category_add`、`mail_bulk_category_remove`、`mail_export_eml`、`mail_import_eml`、`mail_move`、`mail_delete`、`mail_permanent_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_draft_update`、`mail_draft_attachment_delete`、`mail_draft_attachment_replace`、`mail_draft_attachment_bulk_delete`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`、`mail_message_categories`、`mail_category_add`、`mail_category_remove`、`mail_rules_list`、`mail_rule_create`、`mail_rule_delete`、`mail_rule_update`、`mail_rule_apply`、`mail_master_categories_list`、`mail_master_category_create`、`mail_master_category_delete`、`mail_master_category_update`、`calendar_list`、`calendar_calendars_list`、`contacts_list`、`calendar_create`、`calendar_update`、`calendar_delete`、`calendar_cancel`、`calendar_respond`、`calendar_forward`、`calendar_export_ics`、`calendar_import_ics`、`calendar_series_info`、`calendar_series_update`、`calendar_series_delete`、`calendar_free_busy`、`calendar_find_meeting_times`、`calendar_attachments_list`、`calendar_attachment_add`、`calendar_attachment_get`、`calendar_attachment_delete`、`calendar_attachment_replace`、`calendar_attachment_bulk_delete`、`contacts_create`、`contacts_update`、`contacts_delete`、`contacts_permanent_delete`、`contacts_photo_get`、`contacts_photo_set`、`contacts_search`、`contacts_folders_list`、`contacts_folder_create`、`contacts_folder_delete`、`contacts_folder_rename`、`contacts_move`、`contacts_copy`、`contacts_export`、`contacts_import`、`contacts_bulk_delete`、`contacts_duplicates_scan`、`contacts_duplicates_merge`、`sync_run`、`sync_status`、`sync_reset`、`local_search`
+- 对应的 MCP 工具：`account_list`、`auth_status`、`audit_list`、`audit_export`、`audit_stats`、`audit_verify`、`audit_config_get`、`audit_config_set`、`audit_cleanup`、`update_check`、`mailbox_settings_get`、`mailbox_auto_reply_get`、`mailbox_auto_reply_set`、`mailbox_timezone_get`、`mailbox_timezone_set`、`mail_query`、`mail_view_save`、`mail_view_list`、`mail_view_run`、`mail_view_delete`、`mail_list`、`mail_read`、`mail_search`、`mail_send`、`mail_mark_read`、`mail_mark_unread`、`mail_folders_list`、`mail_folder_tree`、`mail_bulk_move`、`mail_bulk_delete`、`mail_bulk_mark_read`、`mail_bulk_mark_unread`、`mail_bulk_flag`、`mail_bulk_unflag`、`mail_bulk_set_importance`、`mail_bulk_category_add`、`mail_bulk_category_remove`、`mail_export_eml`、`mail_import_eml`、`mail_move`、`mail_delete`、`mail_permanent_delete`、`mail_attachments_list`、`mail_attachment_save`、`mail_reply`、`mail_reply_all`、`mail_forward`、`mail_draft_create`、`mail_drafts_list`、`mail_draft_send`、`mail_draft_update`、`mail_draft_attachment_delete`、`mail_draft_attachment_replace`、`mail_draft_attachment_bulk_delete`、`mail_folder_create`、`mail_folder_rename`、`mail_folder_delete`、`mail_flag`、`mail_unflag`、`mail_set_importance`、`mail_message_categories`、`mail_category_add`、`mail_category_remove`、`mail_rules_list`、`mail_rule_create`、`mail_rule_delete`、`mail_rule_update`、`mail_rule_apply`、`mail_master_categories_list`、`mail_master_category_create`、`mail_master_category_delete`、`mail_master_category_update`、`calendar_list`、`calendar_calendars_list`、`contacts_list`、`calendar_create`、`calendar_update`、`calendar_delete`、`calendar_cancel`、`calendar_respond`、`calendar_forward`、`calendar_export_ics`、`calendar_import_ics`、`calendar_series_info`、`calendar_series_update`、`calendar_series_delete`、`calendar_free_busy`、`calendar_find_meeting_times`、`calendar_attachments_list`、`calendar_attachment_add`、`calendar_attachment_get`、`calendar_attachment_delete`、`calendar_attachment_replace`、`calendar_attachment_bulk_delete`、`contacts_create`、`contacts_update`、`contacts_delete`、`contacts_permanent_delete`、`contacts_photo_get`、`contacts_photo_set`、`contacts_search`、`contacts_folders_list`、`contacts_folder_create`、`contacts_folder_delete`、`contacts_folder_rename`、`contacts_move`、`contacts_copy`、`contacts_export`、`contacts_import`、`contacts_bulk_delete`、`contacts_duplicates_scan`、`contacts_duplicates_merge`、`sync_run`、`sync_status`、`sync_reset`、`local_search`
 
 ## 4. 代码编写准则
 

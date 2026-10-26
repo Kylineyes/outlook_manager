@@ -11,6 +11,7 @@ import (
 	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/auth"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
+	"github.com/Kylineyes/outlook-manager/internal/secure"
 	"github.com/Kylineyes/outlook-manager/internal/store"
 )
 
@@ -54,6 +55,7 @@ func runDoctor(args []string) error {
 		add("OAuth 配置", nil, fmt.Sprintf("clientId=%s authority=%s scopes=%d", cfg.ClientID, cfg.Authority, len(cfg.Scopes)))
 	}
 
+	add("安全存储", secure.Check(), secure.Backend())
 	accounts, err := store.LoadAccounts()
 	add("账号档案", err, fmt.Sprintf("账号数量=%d", len(accounts.Accounts)))
 	if err == nil && len(accounts.Accounts) == 0 {

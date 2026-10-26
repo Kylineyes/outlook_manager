@@ -81,7 +81,7 @@ func addTool[In any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandler
 
 func isReadOnlyTool(name string) bool {
 	switch name {
-	case "account_list", "audit_list", "audit_stats", "audit_verify", "audit_config_get", "calendar_series_info", "calendar_free_busy", "calendar_find_meeting_times", "contacts_duplicates_scan", "sync_status", "local_search", "mailbox_settings_get", "mailbox_auto_reply_get", "mailbox_timezone_get", "mail_query", "mail_view_list", "mail_folder_tree", "mail_list", "mail_read", "mail_search", "mail_folders_list",
+	case "account_list", "audit_list", "audit_stats", "audit_verify", "audit_config_get", "update_check", "calendar_series_info", "calendar_free_busy", "calendar_find_meeting_times", "contacts_duplicates_scan", "sync_status", "local_search", "mailbox_settings_get", "mailbox_auto_reply_get", "mailbox_timezone_get", "mail_query", "mail_view_list", "mail_folder_tree", "mail_list", "mail_read", "mail_search", "mail_folders_list",
 		"mail_attachments_list", "mail_message_categories", "mail_rules_list",
 		"mail_master_categories_list", "calendar_list", "calendar_calendars_list",
 		"calendar_attachments_list", "calendar_attachment_get", "contacts_list",
@@ -928,6 +928,7 @@ func main() {
 	registerIndexTools(server)
 	registerEMLTools(server)
 	registerAuditTools(server)
+	registerReleaseTools(server)
 	registerMailQueryTools(server)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
