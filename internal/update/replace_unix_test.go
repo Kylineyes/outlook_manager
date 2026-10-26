@@ -11,7 +11,8 @@ import (
 func TestReplaceBinaryUnix(t *testing.T) {
 	dir := t.TempDir()
 	current := filepath.Join(dir, "outlookctl")
-	next := filepath.Join(dir, "outlookctl.new")
+	nextDir := t.TempDir()
+	next := filepath.Join(nextDir, "outlookctl.new")
 	backup := filepath.Join(dir, "outlookctl.bak")
 	if err := os.WriteFile(current, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
