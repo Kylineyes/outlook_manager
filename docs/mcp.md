@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 96 个 MCP tools 的分组说明
+- 109 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 96 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 109 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -254,6 +254,13 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `calendar_cancel` | 取消日历事件 | `id`、`comment`、`account` |
 | `calendar_respond` | 响应日历邀请 | `id`、`response`（accept/decline/tentative）、`comment`、`account` |
 | `calendar_forward` | 转发日历事件 | `id`、`to`、`comment`、`account` |
+| `calendar_export_ics` | 导出日历事件为 ICS | `file`、`calendar`、`max`、`account` |
+| `calendar_import_ics` | 从 ICS 导入事件，默认 dry-run | `file`、`confirm`、`max`、`account` |
+| `calendar_series_info` | 查看重复事件系列信息 | `id`、`account` |
+| `calendar_series_update` | 更新单次事件或整个系列 | `id`、`scope`、`subject`、`start`、`end`、`timeZone`、`location`、`body`、`categories`、`showAs`、`importance`、`sensitivity`、`account` |
+| `calendar_series_delete` | 删除单次事件或整个系列 | `id`、`scope`、`account` |
+| `calendar_free_busy` | 查询空闲/忙碌状态 | `schedules`、`start`、`end`、`interval`、`account` |
+| `calendar_find_meeting_times` | 查询共同空闲会议时间 | `attendees`、`start`、`end`、`duration`、`max`、`account` |
 | `calendar_attachments_list` | 列出事件附件 | `id`、`account` |
 | `calendar_attachment_add` | 给事件添加附件 | `id`、`file`、`account` |
 | `calendar_attachment_get` | 下载事件附件 | `id`、`attachmentId`、`account` |
@@ -284,6 +291,12 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `contacts_photo_get` | 读取联系人照片 | `id`、`account` |
 | `contacts_photo_set` | 设置联系人照片 | `id`、`file`、`account` |
 | `contacts_bulk_delete` | 批量删除联系人，默认 dry-run | `ids`、`confirm`、`account` |
+| `contacts_duplicates_scan` | 扫描重复联系人 | `strategy`、`folder`、`max`、`account` |
+| `contacts_duplicates_merge` | 合并重复联系人，默认 dry-run | `strategy`、`folder`、`max`、`confirm`、`account` |
+| `sync_run` | 同步本地索引，delta 不可用时回退全量 | `mail`、`contacts`、`events`、`max`、`account` |
+| `sync_status` | 查看本地索引状态 | 无 |
+| `sync_reset` | 删除本地索引 | `confirm` |
+| `local_search` | 搜索本地索引 | `query`、`type`、`limit` |
 | `contacts_export` | 导出联系人到 CSV 或 vCard | `file`、`format`、`folder`、`max`、`account` |
 | `contacts_import` | 从 CSV 或 vCard 导入联系人 | `file`、`format`、`folder`、`max`、`confirm`、`account` |
 
@@ -784,6 +797,87 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
   }
 }
 ```
+
+### 7.24 日历 ICS、系列和空闲查询
+
+```json
+{
+  "tool": "calendar_export_ics",
+  "arguments": {
+    "file": "C:\\temp\\calendar.ics"
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_series_update",
+  "arguments": {
+    "id": "<event-id>",
+    "scope": "series",
+    "subject": "新的系列主题"
+  }
+}
+```
+
+```json
+{
+  "tool": "calendar_free_busy",
+  "arguments": {
+    "schedules": ["someone@example.com"],
+    "start": "2026-11-01T00:00:00Z",
+    "end": "2026-11-02T00:00:00Z"
+  }
+}
+```
+
+### 7.25 联系人重复合并
+
+```json
+{
+  "tool": "contacts_duplicates_scan",
+  "arguments": {
+    "strategy": "email"
+  }
+}
+```
+
+```json
+{
+  "tool": "contacts_duplicates_merge",
+  "arguments": {
+    "strategy": "email",
+    "confirm": true
+  }
+}
+```
+
+### 7.26 本地索引和离线搜索
+
+```json
+{
+  "tool": "sync_run",
+  "arguments": {
+    "mail": true,
+    "contacts": true,
+    "events": true,
+    "max": 1000
+  }
+}
+```
+
+```json
+{
+  "tool": "local_search",
+  "arguments": {
+    "query": "账单",
+    "type": "all",
+    "limit": 20
+  }
+}
+```
+
+> 个人 Microsoft 账号可能不支持部分 Graph delta 端点；此时 `sync_run` 会自动回退为全量同步，并在 `warnings` 中说明。
 
 ## 8. MCP tool annotations 和结构化输出
 

@@ -19,6 +19,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - Graph 与 token 请求临时错误自动重试
 - CLI 子命令 --help 体系
 - 本地操作审计日志（轮转与查询）
+- 本地索引、增量同步与离线搜索
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -44,6 +45,9 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 主类别管理
 - 主类别颜色更新
 - 日历事件读取
+- 日历事件 ICS 导入导出
+- 重复日历事件系列信息与单次/系列更新删除
+- 日历空闲/忙碌与会议时间查询
 - 多日历列表与按日历查询事件
 - 日历事件创建、更新、删除
 - 日历参与人与提醒
@@ -56,6 +60,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 联系人读取
 - 联系人创建、更新、删除
 - 联系人搜索
+- 联系人重复检测与合并
 - 日历重复事件
 - 联系人文件夹管理
 - 联系人文件夹重命名
@@ -171,6 +176,13 @@ outlookctl calendar delete --id <事件ID>
 outlookctl calendar cancel --id <事件ID> --comment "取消说明"
 outlookctl calendar respond --id <事件ID> --response accept
 outlookctl calendar forward --id <事件ID> --to someone@example.com
+outlookctl calendar export-ics --out C:\temp\calendar.ics
+outlookctl calendar import-ics --file C:\temp\calendar.ics --confirm
+outlookctl calendar series-info --id <事件ID>
+outlookctl calendar series-update --id <事件ID> --scope series --subject "新主题"
+outlookctl calendar series-delete --id <事件ID> --scope single
+outlookctl calendar freebusy --schedules someone@example.com --start 2026-11-01T00:00:00Z --end 2026-11-02T00:00:00Z
+outlookctl calendar find-time --attendees someone@example.com --start 2026-11-01T00:00:00Z --end 2026-11-02T00:00:00Z --duration 60
 outlookctl contacts list --top 20
 outlookctl contacts list --folder "客户" --top 20
 outlookctl contacts search --query "张"
@@ -187,6 +199,8 @@ outlookctl contacts export --out C:\temp\contacts.csv
 outlookctl contacts import --file C:\temp\contacts.csv --confirm
 outlookctl contacts export --out C:\temp\contacts.vcf --format vcf
 outlookctl contacts import --file C:\temp\contacts.vcf --format vcf --confirm
+outlookctl contacts duplicates scan --strategy email
+outlookctl contacts duplicates merge --strategy email --confirm
 outlookctl contacts update --id <联系人ID> --display-name "新名称"
 outlookctl contacts delete --id <联系人ID>
 outlookctl contacts permanent-delete --id <联系人ID>
@@ -213,13 +227,16 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 96 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 109 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
 - 邮件附件、文件夹、类别、旗标和重要性
 - 收件箱规则与主类别
 - 日历事件、日历列表、事件附件和邀请响应
+- 日历 ICS 导入导出、重复事件系列和空闲查询
+- 联系人重复检测与合并
+- 本地索引、增量同步和离线搜索
 - 联系人、联系人文件夹、地址和照片
 
 完整的 MCP 客户端配置、工具参数、调用示例和故障排查见：
@@ -248,6 +265,7 @@ docs/mcp.md
 - `logs\auth.log`：预留的认证日志位置
 - `logs\audit.log`：JSON Lines 操作审计日志
 - `views.json`：保存的邮件查询视图
+- `index.json`：邮件、联系人和日历的本地索引
 
 查询审计日志：
 
@@ -263,6 +281,10 @@ outlookctl mail bulk-category-add --ids <id1,id2> --category <名称> [--confirm
 outlookctl mail export-eml <邮件ID> --out C:\temp\mail.eml
 outlookctl mail import-eml --file C:\temp\mail.eml --confirm
 outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]
+outlookctl sync run
+outlookctl sync status
+outlookctl sync reset --confirm
+outlookctl search --query <关键字> --type all
 outlookctl audit list --action mail. --json
 ```
 
