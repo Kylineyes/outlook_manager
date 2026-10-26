@@ -45,3 +45,14 @@ func TestDeltaApplyHelpers(t *testing.T) {
 		t.Fatalf("unexpected remove: %#v", messages)
 	}
 }
+
+func BenchmarkSearch(b *testing.B) {
+	snapshot := &Snapshot{Messages: make([]graph.Message, 0, 1000)}
+	for i := 0; i < 1000; i++ {
+		snapshot.Messages = append(snapshot.Messages, graph.Message{ID: "m", Subject: "账单通知", BodyPreview: "本月账单内容"})
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Search(snapshot, "账单", "mail", 20)
+	}
+}

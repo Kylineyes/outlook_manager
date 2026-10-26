@@ -32,7 +32,7 @@ import (
 func newTool(name, description string) *mcp.Tool {
 	readOnly := isReadOnlyTool(name)
 	destructive := isDestructiveTool(name)
-	openWorld := name != "account_list" && name != "audit_list"
+	openWorld := name != "account_list" && !strings.HasPrefix(name, "audit_")
 	return &mcp.Tool{
 		Name:        name,
 		Title:       description,
@@ -81,7 +81,7 @@ func addTool[In any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandler
 
 func isReadOnlyTool(name string) bool {
 	switch name {
-	case "account_list", "audit_list", "calendar_series_info", "calendar_free_busy", "calendar_find_meeting_times", "contacts_duplicates_scan", "sync_status", "local_search", "mailbox_settings_get", "mailbox_auto_reply_get", "mailbox_timezone_get", "mail_query", "mail_view_list", "mail_folder_tree", "mail_list", "mail_read", "mail_search", "mail_folders_list",
+	case "account_list", "audit_list", "audit_stats", "audit_verify", "audit_config_get", "calendar_series_info", "calendar_free_busy", "calendar_find_meeting_times", "contacts_duplicates_scan", "sync_status", "local_search", "mailbox_settings_get", "mailbox_auto_reply_get", "mailbox_timezone_get", "mail_query", "mail_view_list", "mail_folder_tree", "mail_list", "mail_read", "mail_search", "mail_folders_list",
 		"mail_attachments_list", "mail_message_categories", "mail_rules_list",
 		"mail_master_categories_list", "calendar_list", "calendar_calendars_list",
 		"calendar_attachments_list", "calendar_attachment_get", "contacts_list",
@@ -94,7 +94,7 @@ func isReadOnlyTool(name string) bool {
 
 func isDestructiveTool(name string) bool {
 	switch name {
-	case "mail_delete", "mail_bulk_delete", "mail_permanent_delete", "mail_folder_delete", "mail_view_delete", "calendar_series_delete", "contacts_duplicates_merge", "sync_reset",
+	case "mail_delete", "mail_bulk_delete", "mail_permanent_delete", "mail_folder_delete", "mail_view_delete", "calendar_series_delete", "contacts_duplicates_merge", "sync_reset", "audit_cleanup",
 		"mail_rule_delete", "mail_rule_apply", "mail_master_category_delete",
 		"mail_draft_attachment_delete", "mail_draft_attachment_replace",
 		"calendar_delete", "calendar_cancel", "calendar_attachment_delete", "calendar_attachment_replace", "calendar_attachment_bulk_delete", "contacts_delete", "contacts_bulk_delete", "mail_draft_attachment_bulk_delete",
@@ -694,8 +694,12 @@ type calendarAttachmentReplaceArgs struct {
 
 // auditListArgs 是 audit_list tool 的输入参数。
 type auditListArgs struct {
-	Limit  int    `json:"limit,omitempty" jsonschema:"最多返回多少条记录，默认 50"`
-	Action string `json:"action,omitempty" jsonschema:"按 action 前缀过滤"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"最多返回多少条记录，默认 50"`
+	Action  string `json:"action,omitempty" jsonschema:"按 action 前缀过滤"`
+	Account string `json:"account,omitempty" jsonschema:"按账号过滤"`
+	Query   string `json:"query,omitempty" jsonschema:"搜索关键字"`
+	Since   string `json:"since,omitempty" jsonschema:"开始时间"`
+	Until   string `json:"until,omitempty" jsonschema:"结束时间"`
 }
 
 // mailFolderTreeArgs 是 mail_folder_tree tool 的输入参数。
@@ -923,6 +927,7 @@ func main() {
 	registerContactExtraTools(server)
 	registerIndexTools(server)
 	registerEMLTools(server)
+	registerAuditTools(server)
 	registerMailQueryTools(server)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
@@ -3758,7 +3763,11 @@ func calendarAttachmentReplaceHandler(ctx context.Context, req *mcp.CallToolRequ
 
 // auditListHandler 查询本地审计日志。
 func auditListHandler(ctx context.Context, req *mcp.CallToolRequest, args auditListArgs) (*mcp.CallToolResult, any, error) {
-	entries, err := audit.Entries(args.Limit, args.Action)
+	query, err := auditQueryFromArgs(auditQueryArgs{Limit: args.Limit, Action: args.Action, Account: args.Account, Query: args.Query, Since: args.Since, Until: args.Until})
+	if err != nil {
+		return nil, nil, err
+	}
+	entries, err := audit.Query(query)
 	if err != nil {
 		return nil, nil, err
 	}

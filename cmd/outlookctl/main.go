@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/auth"
 	"github.com/Kylineyes/outlook-manager/internal/contactcsv"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
@@ -126,7 +125,7 @@ func printGroupUsage(group string) {
 		fmt.Fprintln(os.Stdout, "用法: outlookctl contacts <子命令> [options]")
 		fmt.Fprintln(os.Stdout, "子命令: list, search, folders, folder-create, folder-rename, folder-delete, create, update, delete, permanent-delete, photo-get, photo-set, move, copy, export, import, bulk-delete, duplicates")
 	case "audit":
-		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list>")
+		fmt.Fprintln(os.Stdout, "用法: outlookctl audit <list|export|stats|verify|config|cleanup>")
 	case "mailbox":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl mailbox <settings|auto-reply|timezone>")
 		fmt.Fprintln(os.Stdout, "子命令: settings, auto-reply get/set, timezone get/set")
@@ -144,8 +143,18 @@ func runAudit(args []string) error {
 		return errors.New("audit 需要指定子命令: list")
 	}
 	switch args[0] {
-	case "list":
+	case "list", "view":
 		return runAuditList(args[1:])
+	case "export":
+		return runAuditExport(args[1:])
+	case "stats":
+		return runAuditStats(args[1:])
+	case "verify":
+		return runAuditVerify(args[1:])
+	case "config":
+		return runAuditConfig(args[1:])
+	case "cleanup":
+		return runAuditCleanup(args[1:])
 	default:
 		printGroupUsage("audit")
 		return fmt.Errorf("未知 audit 子命令: %s", args[0])
@@ -154,33 +163,7 @@ func runAudit(args []string) error {
 
 // runAuditList 查询本地审计日志。
 func runAuditList(args []string) error {
-	fs := flag.NewFlagSet("audit list", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	limitFlag := fs.Int("limit", 50, "最多返回多少条记录")
-	actionFlag := fs.String("action", "", "按 action 前缀过滤")
-	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
-	if err := parseCommandFlags(fs, args); err != nil {
-		return err
-	}
-	entries, err := audit.Entries(*limitFlag, *actionFlag)
-	if err != nil {
-		return err
-	}
-	if *jsonFlag {
-		data, err := json.MarshalIndent(entries, "", "  ")
-		if err != nil {
-			return fmt.Errorf("序列化审计日志失败: %w", err)
-		}
-		fmt.Fprintln(os.Stdout, string(data))
-		return nil
-	}
-	for _, entry := range entries {
-		timeText, _ := entry["time"].(string)
-		action, _ := entry["action"].(string)
-		data, _ := json.Marshal(entry)
-		fmt.Fprintf(os.Stdout, "%s | %s | %s\n", timeText, action, string(data))
-	}
-	return nil
+	return runAuditListQuery(args)
 }
 
 // runAuth 处理 auth 子命令。
@@ -4747,6 +4730,11 @@ func printUsage() {
   outlookctl sync reset --confirm         删除本地索引
   outlookctl search --query <关键字>       搜索本地索引
   outlookctl audit list [--limit 50]       查询本地审计日志
+  outlookctl audit export --out <文件> --format csv|json  导出审计日志
+  outlookctl audit stats                   审计统计
+  outlookctl audit verify                  校验审计哈希链
+  outlookctl audit config get|set          查看或设置保留策略
+  outlookctl audit cleanup                 清理过期审计日志
   outlookctl mail list [--account <email>] 读取收件箱最新邮件
   outlookctl mail search --query <关键字>       搜索邮件
   outlookctl mail query --from <邮箱> --unread --has-attachment --after 2026-10-01  高级邮件查询

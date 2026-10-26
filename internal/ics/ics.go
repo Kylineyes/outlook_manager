@@ -13,6 +13,8 @@ import (
 	"github.com/Kylineyes/outlook-manager/internal/graph"
 )
 
+var nowFunc = time.Now
+
 // WriteEvents 把日历事件写成 iCalendar 3.0 文本。
 func WriteEvents(w io.Writer, events []graph.CalendarEvent) error {
 	writer := bufio.NewWriter(w)
@@ -27,7 +29,7 @@ func WriteEvents(w io.Writer, events []graph.CalendarEvent) error {
 			uid = event.ID
 		}
 		fmt.Fprintf(writer, "UID:%s\n", escapeText(uid))
-		fmt.Fprintf(writer, "DTSTAMP:%s\n", time.Now().UTC().Format("20060102T150405Z"))
+		fmt.Fprintf(writer, "DTSTAMP:%s\n", nowFunc().UTC().Format("20060102T150405Z"))
 		writeDateProperty(writer, "DTSTART", event.Start, event.IsAllDay)
 		writeDateProperty(writer, "DTEND", event.End, event.IsAllDay)
 		writeTextProperty(writer, "SUMMARY", event.Subject)

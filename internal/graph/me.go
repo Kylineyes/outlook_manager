@@ -15,7 +15,7 @@ import (
 )
 
 // graphBaseURL 是 Microsoft Graph v1.0 的固定入口。
-const graphBaseURL = "https://graph.microsoft.com/v1.0"
+var graphBaseURL = "https://graph.microsoft.com/v1.0"
 
 // httpClient 是所有 Graph REST 调用共用的 HTTP 客户端。
 // 设置超时是为了避免网络异常时 CLI 长时间挂起。
