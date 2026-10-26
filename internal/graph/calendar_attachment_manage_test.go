@@ -28,7 +28,7 @@ func (t *calendarAttachmentManageTransport) RoundTrip(req *http.Request) (*http.
 }
 
 func TestDeleteCalendarEventAttachment(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	transport := &calendarAttachmentManageTransport{}
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: transport}
@@ -43,7 +43,7 @@ func TestDeleteCalendarEventAttachment(t *testing.T) {
 }
 
 func TestReplaceCalendarEventAttachmentAddsThenDeletes(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	transport := &calendarAttachmentManageTransport{}
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: transport}

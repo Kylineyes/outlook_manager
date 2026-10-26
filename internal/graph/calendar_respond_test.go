@@ -28,7 +28,7 @@ func (t *calendarRespondTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func TestRespondCalendarEventBuildsRequest(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	transport := &calendarRespondTransport{}
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: transport}

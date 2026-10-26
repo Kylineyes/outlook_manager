@@ -5,7 +5,7 @@ import (
 )
 
 func TestMailViewsRoundTrip(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setStoreTestHome(t)
 	view := MailView{Name: "未读", Folder: "inbox", UnreadOnly: true, Top: 20}
 	if _, err := UpsertMailView(view); err != nil {
 		t.Fatal(err)

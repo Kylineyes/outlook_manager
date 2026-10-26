@@ -30,7 +30,7 @@ func (t *mailboxTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func TestMailboxSettingsRequests(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	transport := &mailboxTransport{}
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: transport}
