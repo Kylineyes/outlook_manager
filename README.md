@@ -11,6 +11,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 收件箱邮件列表
 - 单封邮件详情
 - 邮件搜索
+- 批量邮件状态操作（已读、旗标、重要性、类别）
 - 高级邮件查询
 - 保存邮件视图
 - 邮箱设置管理（自动回复、时区、语言、工作时间）
@@ -31,6 +32,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 邮件永久删除
 - 邮件附件列表
 - 邮件附件下载
+- EML/MIME 邮件导出与导入为草稿
 - 邮件发送附件
 - 邮件大附件上传（3 MiB - 150 MiB，自动使用上传会话）
 - 邮件发送选项（重要性、已读回执、送达回执）
@@ -211,7 +213,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 87 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 96 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -254,6 +256,12 @@ outlookctl audit list --limit 20
 outlookctl doctor
 outlookctl mail folder-tree
 outlookctl mail bulk-delete --ids <id1,id2> [--confirm]
+outlookctl mail bulk-mark-read --ids <id1,id2> [--confirm]
+outlookctl mail bulk-flag --ids <id1,id2> [--confirm]
+outlookctl mail bulk-importance --ids <id1,id2> --level high [--confirm]
+outlookctl mail bulk-category-add --ids <id1,id2> --category <名称> [--confirm]
+outlookctl mail export-eml <邮件ID> --out C:\temp\mail.eml
+outlookctl mail import-eml --file C:\temp\mail.eml --confirm
 outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]
 outlookctl audit list --action mail. --json
 ```

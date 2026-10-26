@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 87 个 MCP tools 的分组说明
+- 96 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 87 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 96 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -189,6 +189,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_folder_tree` | 树形列出邮件文件夹 | `top`、`account` |
 | `mail_attachments_list` | 列出邮件附件 | `id`、`account` |
 | `mail_attachment_save` | 下载邮件附件到本地 | `id`、`attachmentId`、`outputPath`、`account` |
+| `mail_export_eml` | 导出邮件为 EML/MIME 文件 | `id`、`file`、`account` |
+| `mail_import_eml` | 从 EML 导入为草稿，默认 dry-run | `file`、`confirm`、`account` |
 | `mail_message_categories` | 列出单封邮件的类别 | `id`、`account` |
 | `mail_rules_list` | 列出收件箱规则 | `account` |
 | `mail_master_categories_list` | 列出主类别 | `account` |
@@ -217,6 +219,13 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `mail_delete` | 移动到已删除邮件 | `id`、`account` |
 | `mail_bulk_move` | 批量移动邮件，默认 dry-run | `ids`、`folder`、`confirm`、`account` |
 | `mail_bulk_delete` | 批量删除邮件，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_mark_read` | 批量标记已读，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_mark_unread` | 批量标记未读，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_flag` | 批量设置旗标，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_unflag` | 批量取消旗标，默认 dry-run | `ids`、`confirm`、`account` |
+| `mail_bulk_set_importance` | 批量设置重要性，默认 dry-run | `ids`、`level`、`confirm`、`account` |
+| `mail_bulk_category_add` | 批量添加类别，默认 dry-run | `ids`、`category`、`confirm`、`account` |
+| `mail_bulk_category_remove` | 批量移除类别，默认 dry-run | `ids`、`category`、`confirm`、`account` |
 | `mail_permanent_delete` | 永久删除邮件 | `id`、`account` |
 | `mail_category_add` | 给邮件添加类别 | `id`、`category`、`account` |
 | `mail_category_remove` | 移除邮件类别 | `id`、`category`、`account` |
@@ -727,6 +736,51 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
   "tool": "mail_view_run",
   "arguments": {
     "name": "未读重要"
+  }
+}
+```
+
+### 7.22 批量邮件状态操作
+
+```json
+{
+  "tool": "mail_bulk_mark_read",
+  "arguments": {
+    "ids": ["<id1>", "<id2>"],
+    "confirm": true
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_bulk_set_importance",
+  "arguments": {
+    "ids": ["<id1>", "<id2>"],
+    "level": "high",
+    "confirm": true
+  }
+}
+```
+
+### 7.23 EML/MIME 导入导出
+
+```json
+{
+  "tool": "mail_export_eml",
+  "arguments": {
+    "id": "<message-id>",
+    "file": "C:\\temp\\mail.eml"
+  }
+}
+```
+
+```json
+{
+  "tool": "mail_import_eml",
+  "arguments": {
+    "file": "C:\\temp\\mail.eml",
+    "confirm": true
   }
 }
 ```
