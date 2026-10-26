@@ -94,6 +94,12 @@ func run(args []string) error {
 		return runDoctor(args[1:])
 	case "update":
 		return runUpdate(args[1:])
+	case "completion":
+		return runCompletion(args[1:])
+	case "ui":
+		return runUI(args[1:])
+	case "config":
+		return runConfig(args[1:])
 	case "sync":
 		return runSync(args[1:])
 	case "search", "local-search":
@@ -492,8 +498,16 @@ func runMailList(args []string) error {
 	allFlag := fs.Bool("all", false, "分页拉取多页邮件")
 	maxFlag := fs.Int("max", 500, "全量拉取时的最大邮件数量，范围 1-1000")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	outputFlag := fs.String("output", "", "输出格式: text/table/json")
 	if err := parseCommandFlags(fs, args); err != nil {
 		return err
+	}
+	format, formatErr := effectiveOutputFormat(*outputFlag, *jsonFlag)
+	if formatErr != nil {
+		return formatErr
+	}
+	if format == "json" {
+		*jsonFlag = true
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -549,6 +563,9 @@ func runMailList(args []string) error {
 		return nil
 	}
 
+	if format == "table" {
+		return printMailTable(messages, selected.Username)
+	}
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
 	if strings.TrimSpace(*folderFlag) != "" {
 		fmt.Fprintf(os.Stdout, "文件夹: %s\n", *folderFlag)
@@ -1987,8 +2004,16 @@ func runCalendarList(args []string) error {
 	daysFlag := fs.Int("days", 7, "查询未来多少天，范围 1-90")
 	topFlag := fs.Int("top", 50, "最多返回多少条事件，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	outputFlag := fs.String("output", "", "输出格式: text/table/json")
 	if err := parseCommandFlags(fs, args); err != nil {
 		return err
+	}
+	format, formatErr := effectiveOutputFormat(*outputFlag, *jsonFlag)
+	if formatErr != nil {
+		return formatErr
+	}
+	if format == "json" {
+		*jsonFlag = true
 	}
 	if *daysFlag <= 0 {
 		*daysFlag = 7
@@ -2037,6 +2062,9 @@ func runCalendarList(args []string) error {
 		return nil
 	}
 
+	if format == "table" {
+		return printCalendarTable(events, selected.Username)
+	}
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
 	fmt.Fprintf(os.Stdout, "事件数量: %d\n", len(events))
 	for i, event := range events {
@@ -2113,8 +2141,16 @@ func runContactsList(args []string) error {
 	folderFlag := fs.String("folder", "", "联系人文件夹名称或 ID；不填时使用默认文件夹")
 	topFlag := fs.Int("top", 50, "最多返回多少个联系人，范围 1-200")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	outputFlag := fs.String("output", "", "输出格式: text/table/json")
 	if err := parseCommandFlags(fs, args); err != nil {
 		return err
+	}
+	format, formatErr := effectiveOutputFormat(*outputFlag, *jsonFlag)
+	if formatErr != nil {
+		return formatErr
+	}
+	if format == "json" {
+		*jsonFlag = true
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -2159,6 +2195,9 @@ func runContactsList(args []string) error {
 		return nil
 	}
 
+	if format == "table" {
+		return printContactsTable(contacts, selected.Username)
+	}
 	fmt.Fprintf(os.Stdout, "账号: %s\n", selected.Username)
 	fmt.Fprintf(os.Stdout, "联系人数量: %d\n", len(contacts))
 	for i, contact := range contacts {
@@ -4728,6 +4767,12 @@ func printUsage() {
   outlookctl mailbox timezone set         设置时区
   outlookctl doctor                        执行环境与账号诊断
   outlookctl update check                  检查 GitHub 最新版本
+  outlookctl update download               下载并校验当前平台更新
+  outlookctl update apply --yes            备份并替换当前二进制
+  outlookctl update rollback --yes         使用备份回滚
+  outlookctl config get|set                查看或设置 CLI 偏好
+  outlookctl completion <shell>            生成 Shell 自动补全
+  outlookctl ui                            打开交互式文本菜单
   outlookctl sync run                     同步本地索引
   outlookctl sync status                  查看本地索引状态
   outlookctl sync reset --confirm         删除本地索引

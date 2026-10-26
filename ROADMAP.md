@@ -31,6 +31,9 @@
 - CHANGELOG、Release Notes 模板和发布文档
 - 自动更新检查
 - Release 附带 README、LICENSE、CHANGELOG
+- Shell 自动补全、彩色/表格输出和交互菜单
+- CLI 配置文件与输出格式偏好
+- 自动更新下载、校验、替换和回滚
 
 ## 待开发事项
 
@@ -38,16 +41,11 @@
 
 ### 1. CLI 体验增强
 
-- Shell 自动补全
-- 彩色输出
-- 表格输出
-- 交互式 TUI
 - 进度条
 - 大附件上传进度
 - 可恢复上传
-- 配置文件命令
 - 更好的错误提示
-- --output table|json|yaml
+- --output yaml
 - 命令别名
 
 ### 2. 发布与分发

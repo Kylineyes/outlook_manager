@@ -10,6 +10,7 @@ import (
 
 	"github.com/Kylineyes/outlook-manager/internal/audit"
 	"github.com/Kylineyes/outlook-manager/internal/auth"
+	"github.com/Kylineyes/outlook-manager/internal/cliui"
 	"github.com/Kylineyes/outlook-manager/internal/graph"
 	"github.com/Kylineyes/outlook-manager/internal/secure"
 	"github.com/Kylineyes/outlook-manager/internal/store"
@@ -118,9 +119,9 @@ func runDoctor(args []string) error {
 		fmt.Fprintln(os.Stdout, string(data))
 	} else {
 		for _, check := range checks {
-			status := "PASS"
+			status := cliui.Colorize("PASS", cliui.Green)
 			if !check.OK {
-				status = "FAIL"
+				status = cliui.Colorize("FAIL", cliui.Red)
 			}
 			fmt.Fprintf(os.Stdout, "[%s] %s: %s\n", status, check.Name, check.Message)
 		}

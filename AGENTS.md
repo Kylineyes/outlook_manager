@@ -71,7 +71,13 @@ outlook_manager/
 - `outlookctl audit config`
 - `outlookctl audit cleanup`
 - `outlookctl doctor`
+- `outlookctl completion`
+- `outlookctl config`
+- `outlookctl ui`
 - `outlookctl update check`
+- `outlookctl update download`
+- `outlookctl update apply`
+- `outlookctl update rollback`
 - `outlookctl sync run`
 - `outlookctl sync status`
 - `outlookctl sync reset`

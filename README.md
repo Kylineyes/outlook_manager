@@ -86,11 +86,15 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 并发/竞态测试、benchmark 与 CI 覆盖率流程
 - CLI doctor 环境与账号诊断
 - 邮件列表、搜索、详情、附件对应的 MCP tools
+- Shell 自动补全、彩色/表格输出和交互菜单
+- CLI 配置文件与输出格式偏好
+- 自动更新检查、下载、SHA256/GPG 校验、替换和回滚
 
 ## 环境要求
 
-- Windows
+- Windows / Linux / macOS
 - Go 1.27 或更高版本
+- Linux 需要可用的 Secret Service
 
 ## 构建
 
@@ -300,6 +304,13 @@ outlookctl audit verify --json
 outlookctl audit config set --max-size-mb 10 --max-backups 5 --retention-days 30
 outlookctl audit cleanup
 outlookctl update check
+outlookctl completion powershell
+outlookctl config set --output table
+outlookctl mail list --output table
+outlookctl ui
+outlookctl update download
+outlookctl update apply --yes
+outlookctl update rollback --yes
 ```
 
 如果 GitHub API 限流或仓库为私有，可设置 `GITHUB_TOKEN` 或 `GH_TOKEN`。
