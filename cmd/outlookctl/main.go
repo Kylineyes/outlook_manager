@@ -114,7 +114,7 @@ func printGroupUsage(group string) {
 		fmt.Fprintln(os.Stdout, "用法: outlookctl account <list|use>")
 	case "mail":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl mail <子命令> [options]")
-		fmt.Fprintln(os.Stdout, "子命令: list, search, query, view, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
+		fmt.Fprintln(os.Stdout, "子命令: list, search, query, view, send, read, mark-read, mark-unread, folders, move, delete, permanent-delete, attachments, attachment-save, export-eml, import-eml, reply, reply-all, forward, draft-create, drafts, draft-send, draft-update, draft-attachment-delete, draft-attachment-replace, draft-attachment-bulk-delete, bulk-move, bulk-delete, bulk-mark-read, bulk-mark-unread, bulk-flag, bulk-unflag, bulk-importance, bulk-category-add, bulk-category-remove, folder-tree, folder-create, folder-rename, folder-delete, flag, unflag, importance, message-categories, category-add, category-remove, rules, rule-create, rule-update, rule-apply, rule-delete, master-categories, master-category-create, master-category-update, master-category-delete")
 	case "calendar":
 		fmt.Fprintln(os.Stdout, "用法: outlookctl calendar <子命令> [options]")
 		fmt.Fprintln(os.Stdout, "子命令: list, calendars, attachments, attachment-add, attachment-get, attachment-delete, attachment-replace, attachment-bulk-delete, create, update, delete, cancel, respond")
@@ -409,6 +409,10 @@ func runMail(args []string) error {
 		return runMailAttachments(args[1:])
 	case "attachment-save":
 		return runMailAttachmentSave(args[1:])
+	case "export-eml":
+		return runMailExportEML(args[1:])
+	case "import-eml":
+		return runMailImportEML(args[1:])
 	case "reply":
 		return runMailReply(args[1:], false)
 	case "reply-all":
@@ -429,6 +433,20 @@ func runMail(args []string) error {
 		return runMailDraftAttachmentReplace(args[1:])
 	case "draft-attachment-bulk-delete":
 		return runMailDraftAttachmentBulkDelete(args[1:])
+	case "bulk-mark-read":
+		return runMailBulkMarkRead(args[1:], true)
+	case "bulk-mark-unread":
+		return runMailBulkMarkRead(args[1:], false)
+	case "bulk-flag":
+		return runMailBulkFlag(args[1:], true)
+	case "bulk-unflag":
+		return runMailBulkFlag(args[1:], false)
+	case "bulk-importance":
+		return runMailBulkImportance(args[1:])
+	case "bulk-category-add":
+		return runMailBulkCategory(args[1:], true)
+	case "bulk-category-remove":
+		return runMailBulkCategory(args[1:], false)
 	case "bulk-move":
 		return runMailBulkMove(args[1:])
 	case "bulk-delete":
@@ -4718,12 +4736,21 @@ func printUsage() {
   outlookctl mail folder-tree                以树形列出邮件文件夹
   outlookctl mail bulk-move --ids <id1,id2> --folder <文件夹> [--confirm]  批量移动邮件
   outlookctl mail bulk-delete --ids <id1,id2> [--confirm]  批量删除邮件
+  outlookctl mail bulk-mark-read --ids <id1,id2> [--confirm]  批量标记已读
+  outlookctl mail bulk-mark-unread --ids <id1,id2> [--confirm]  批量标记未读
+  outlookctl mail bulk-flag --ids <id1,id2> [--confirm]  批量设置旗标
+  outlookctl mail bulk-unflag --ids <id1,id2> [--confirm]  批量取消旗标
+  outlookctl mail bulk-importance --ids <id1,id2> --level high [--confirm]  批量设置重要性
+  outlookctl mail bulk-category-add --ids <id1,id2> --category <名称> [--confirm]  批量添加类别
+  outlookctl mail bulk-category-remove --ids <id1,id2> --category <名称> [--confirm]  批量移除类别
   outlookctl mail draft-attachment-bulk-delete --id <草稿ID> --attachment-ids <id1,id2> [--confirm]  批量删除草稿附件
   outlookctl mail move <message-id> --folder <文件夹>  移动邮件
   outlookctl mail delete <message-id>        删除邮件
   outlookctl mail permanent-delete --id <邮件ID>  永久删除邮件
   outlookctl mail attachments <message-id>   列出邮件附件
   outlookctl mail attachment-save <message-id> --attachment <id> --out <path>  保存附件
+  outlookctl mail export-eml <邮件ID> --out <文件>  导出 EML/MIME
+  outlookctl mail import-eml --file <EML文件> [--confirm]  导入 EML 为草稿
   outlookctl calendar list --days 7          查看未来日历事件
   outlookctl calendar calendars              列出日历
   outlookctl calendar attachments --id <事件ID>  列出事件附件

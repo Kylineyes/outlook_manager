@@ -33,9 +33,6 @@ func buildMessage(input SendMailInput) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(recipients) == 0 {
-		return nil, fmt.Errorf("至少需要一个收件人")
-	}
 	ccRecipients, err := buildRecipients(input.Cc, "抄送")
 	if err != nil {
 		return nil, err
@@ -43,6 +40,9 @@ func buildMessage(input SendMailInput) (map[string]any, error) {
 	bccRecipients, err := buildRecipients(input.Bcc, "密送")
 	if err != nil {
 		return nil, err
+	}
+	if len(recipients) == 0 && len(ccRecipients) == 0 && len(bccRecipients) == 0 {
+		return nil, fmt.Errorf("至少需要一个收件人、抄送人或密送人")
 	}
 
 	contentType := strings.TrimSpace(input.ContentType)

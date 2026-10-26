@@ -918,6 +918,8 @@ func main() {
 	addTool(server, newTool("mail_draft_attachment_bulk_delete", "批量删除草稿附件"), mailDraftAttachmentBulkDeleteHandler)
 
 	registerMailboxTools(server)
+	registerBulkStatusTools(server)
+	registerEMLTools(server)
 	registerMailQueryTools(server)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {

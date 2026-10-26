@@ -40,6 +40,7 @@ type MessageDetail struct {
 	InternetMessageID          string      `json:"internetMessageId"`
 	ConversationID             string      `json:"conversationId"`
 	Importance                 string      `json:"importance,omitempty"`
+	Categories                 []string    `json:"categories,omitempty"`
 	Sensitivity                string      `json:"sensitivity,omitempty"`
 	IsReadReceiptRequested     bool        `json:"isReadReceiptRequested"`
 	IsDeliveryReceiptRequested bool        `json:"isDeliveryReceiptRequested"`
@@ -52,7 +53,7 @@ func GetMessage(ctx context.Context, accessToken, messageID string) (*MessageDet
 	}
 
 	query := url.Values{}
-	query.Set("$select", "id,subject,receivedDateTime,isRead,webLink,bodyPreview,body,from,toRecipients,ccRecipients,bccRecipients,internetMessageId,conversationId,importance,isReadReceiptRequested,isDeliveryReceiptRequested")
+	query.Set("$select", "id,subject,receivedDateTime,isRead,webLink,bodyPreview,body,from,toRecipients,ccRecipients,bccRecipients,internetMessageId,conversationId,importance,categories,isReadReceiptRequested,isDeliveryReceiptRequested")
 	endpoint := graphBaseURL + "/me/messages/" + url.PathEscape(messageID) + "?" + query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)

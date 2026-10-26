@@ -24,3 +24,13 @@ func TestBuildRecipients(t *testing.T) {
 		t.Fatalf("空白邮箱应被忽略，实际数量 = %d", len(recipients))
 	}
 }
+
+func TestBuildMessageAllowsCcOnly(t *testing.T) {
+	message, err := buildMessage(SendMailInput{Cc: []string{"cc@example.com"}, Subject: "test", Body: "body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := message["ccRecipients"]; !ok {
+		t.Fatalf("ccRecipients missing: %#v", message)
+	}
+}
