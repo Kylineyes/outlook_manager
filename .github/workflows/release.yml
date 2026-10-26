@@ -1,0 +1,224 @@
+name: 发布多平台压缩包
+
+# 推送 v* 标签时触发。标签必须位于 main 分支历史中。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-tag:
+    name: 校验标签是否位于 main 分支
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      previous_tag: ${{ steps.previous.outputs.tag }}
+    steps:
+      - name: 检出完整提交历史
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 校验标签提交是否属于 main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
+            echo "标签提交属于 main 分支，可以继续发布。"
+          else
+            echo "::error::标签 $GITHUB_REF_NAME 指向的提交不在 main 分支上，终止发布。"
+            exit 1
+          fi
+
+      - name: 输出标签名
+        id: tag
+        shell: bash
+        run: echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: 查找上一个 tag
+        id: previous
+        shell: bash
+        run: echo "tag=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: 构建 ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: verify-tag
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            arch: amd64
+            archive_arch: amd64-x64
+            runner: windows-latest
+          - platform: windows
+            arch: arm64
+            archive_arch: arm64
+            runner: windows-latest
+          - platform: linux
+            arch: amd64
+            archive_arch: amd64-x64
+            runner: ubuntu-latest
+          - platform: linux
+            arch: arm64
+            archive_arch: arm64
+            runner: ubuntu-latest
+    env:
+      VERSION: ${{ needs.verify-tag.outputs.tag }}
+      GOOS: ${{ matrix.platform }}
+      GOARCH: ${{ matrix.arch }}
+      CGO_ENABLED: '0'
+      WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: true
+
+      - name: 安装 zip
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y zip
+
+      - name: 构建 Windows 二进制
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/pkg, dist | Out-Null
+          Copy-Item README.md,LICENSE,CHANGELOG.md build/pkg
+          go build -trimpath -ldflags "-s -w -X main.version=$env:VERSION" -o build/pkg/outlookctl.exe ./cmd/outlookctl
+          if ($LASTEXITCODE -ne 0) { throw "outlookctl 构建失败" }
+          go build -trimpath -ldflags "-s -w -X main.version=$env:VERSION" -o build/pkg/outlook-mcp.exe ./cmd/outlook-mcp
+          if ($LASTEXITCODE -ne 0) { throw "outlook-mcp 构建失败" }
+
+      - name: Windows Authenticode 签名
+        if: matrix.platform == 'windows' && env.WINDOWS_CERT_BASE64 != ''
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64))
+          $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+          if ($signtool) {
+            $signtoolPath = $signtool.Source
+          } else {
+            $candidate = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $candidate) { throw '找不到 signtool.exe' }
+            $signtoolPath = $candidate.FullName
+          }
+          foreach ($exe in @('build/pkg/outlookctl.exe', 'build/pkg/outlook-mcp.exe')) {
+            & $signtoolPath sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certPath /p $env:WINDOWS_CERT_PASSWORD $exe
+            if ($LASTEXITCODE -ne 0) { throw "签名失败: $exe" }
+            & $signtoolPath verify /pa /v $exe
+            if ($LASTEXITCODE -ne 0) { throw "签名校验失败: $exe" }
+          }
+          Remove-Item $certPath -Force
+
+      - name: 打包 Windows
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/pkg/* -DestinationPath "dist/outlook-manager-windows-${{ matrix.archive_arch }}-$env:VERSION.zip" -Force
+          Get-ChildItem dist | Format-Table Name,Length
+
+      - name: 构建并打包 Linux
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/pkg dist
+          cp README.md LICENSE CHANGELOG.md build/pkg/
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o build/pkg/outlookctl ./cmd/outlookctl
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o build/pkg/outlook-mcp ./cmd/outlook-mcp
+          chmod +x build/pkg/outlookctl build/pkg/outlook-mcp
+          cd build/pkg
+          zip -j "../../dist/outlook-manager-linux-${{ matrix.archive_arch }}-${VERSION}.zip" *
+          cd ../..
+          ls -l dist
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/outlook-manager-*.zip
+          if-no-files-found: error
+
+  release:
+    name: 创建 GitHub Release
+    needs:
+      - verify-tag
+      - build
+    runs-on: ubuntu-latest
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 复制发布文档
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp README.md LICENSE CHANGELOG.md dist/
+          cd dist
+          sha256sum *.zip README.md LICENSE CHANGELOG.md > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: 生成 Release Notes
+        shell: bash
+        env:
+          TAG: ${{ needs.verify-tag.outputs.tag }}
+          PREVIOUS_TAG: ${{ needs.verify-tag.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          sed -e "s/{{TAG}}/${TAG}/g" -e "s/{{DATE}}/$(date -u +%F)/g" .github/release-notes-template.md > dist/RELEASE_NOTES.md
+          echo "" >> dist/RELEASE_NOTES.md
+          echo "## 提交记录" >> dist/RELEASE_NOTES.md
+          echo "" >> dist/RELEASE_NOTES.md
+          if [ -n "${PREVIOUS_TAG}" ]; then
+            git log --pretty=format:'- %s (`%h`)' "${PREVIOUS_TAG}..${TAG}" >> dist/RELEASE_NOTES.md
+          else
+            git log --pretty=format:'- %s (`%h`)' --max-count=30 "${TAG}" >> dist/RELEASE_NOTES.md
+          fi
+          echo "" >> dist/RELEASE_NOTES.md
+
+      - name: GPG 签名 SHA256SUMS
+        if: env.GPG_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --armor --detach-sign --output dist/SHA256SUMS.asc dist/SHA256SUMS
+          gpg --armor --export > dist/public-key.asc
+          ls -l dist/SHA256SUMS.asc dist/public-key.asc
+
+      - name: 发布 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.verify-tag.outputs.tag }}
+          body_path: dist/RELEASE_NOTES.md
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS
+            dist/SHA256SUMS.asc
+            dist/public-key.asc
+            dist/README.md
+            dist/LICENSE
+            dist/CHANGELOG.md
+          fail_on_unmatched_files: false

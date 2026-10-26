@@ -26,6 +26,11 @@
 - mock Graph 集成测试、golden 测试、解析器 fuzz 测试
 - 并发/竞态测试、benchmark 和 CI 覆盖率流程
 - MCP / CLI 文档和诊断命令
+- 多架构发布：Windows/Linux amd64 与 arm64
+- SHA256SUMS 与可选 Authenticode/GPG 代码签名
+- CHANGELOG、Release Notes 模板和发布文档
+- 自动更新检查
+- Release 附带 README、LICENSE、CHANGELOG
 
 ## 待开发事项
 
@@ -50,12 +55,8 @@
 - Scoop 安装包
 - Winget 包
 - 安装脚本
-- 代码签名
-- arm64 构建
-- 版本信息嵌入
-- 自动更新检查
-- Release Notes 模板
 - CHANGELOG 自动生成
+- 自动下载并应用更新
 
 ## 需要第二个测试账号
 

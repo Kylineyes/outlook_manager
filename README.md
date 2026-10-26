@@ -232,7 +232,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 115 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 116 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -249,6 +249,8 @@ outlookctl mail importance <message-id> --level high
 ```text
 docs/mcp.md
 ```
+
+发布签名和校验说明见 `docs/release-signing.md`，版本变更见 `CHANGELOG.md`。
 
 双账号日历验证计划见：`docs/calendar-invite-test-plan.md`。
 
@@ -297,7 +299,10 @@ outlookctl audit stats --json
 outlookctl audit verify --json
 outlookctl audit config set --max-size-mb 10 --max-backups 5 --retention-days 30
 outlookctl audit cleanup
+outlookctl update check
 ```
+
+如果 GitHub API 限流或仓库为私有，可设置 `GITHUB_TOKEN` 或 `GH_TOKEN`。
 
 ## 开发
 

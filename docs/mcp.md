@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 115 个 MCP tools 的分组说明
+- 116 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 115 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 116 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -178,6 +178,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `audit_config_get` | 读取审计配置 | 无 |
 | `audit_config_set` | 设置审计配置 | `maxSizeMB`、`maxBackups`、`retentionDays` |
 | `audit_cleanup` | 清理过期审计日志 | 无 |
+| `update_check` | 检查 GitHub 最新发布版本 | 无 |
 
 ### 6.2 邮件读取与查询
 
@@ -914,6 +915,15 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
     "maxBackups": 5,
     "retentionDays": 30
   }
+}
+```
+
+### 7.28 自动更新检查
+
+```json
+{
+  "tool": "update_check",
+  "arguments": {}
 }
 ```
 
