@@ -13,7 +13,7 @@ import (
 )
 
 func TestLogWritesJSONLine(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setAuditTestHome(t)
 	SetAccount("a@example.com")
 	t.Cleanup(ClearAccount)
 	Log("test.action", map[string]any{"id": "123", "count": 1})
@@ -38,7 +38,7 @@ func TestLogWritesJSONLine(t *testing.T) {
 }
 
 func TestEntriesFiltersAndLimits(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setAuditTestHome(t)
 	Log("mail.send", map[string]any{"id": "1"})
 	Log("calendar.create", map[string]any{"id": "2"})
 	Log("mail.delete", map[string]any{"id": "3"})
@@ -59,7 +59,7 @@ func TestEntriesFiltersAndLimits(t *testing.T) {
 }
 
 func TestQueryFiltersByAccountAndKeyword(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setAuditTestHome(t)
 	SetAccount("a@example.com")
 	Log("mail.send", map[string]any{"subject": "alpha"})
 	SetAccount("b@example.com")
@@ -100,7 +100,7 @@ func TestExportAndStats(t *testing.T) {
 }
 
 func TestVerifyDetectsTamper(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setAuditTestHome(t)
 	Log("mail.send", map[string]any{"id": "1"})
 	Log("mail.delete", map[string]any{"id": "2"})
 	result, err := Verify()
@@ -132,7 +132,7 @@ func TestVerifyDetectsTamper(t *testing.T) {
 }
 
 func TestCleanupRetention(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setAuditTestHome(t)
 	path, err := store.AuditLogPath()
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +159,7 @@ func TestCleanupRetention(t *testing.T) {
 }
 
 func TestLogRotatesWhenSizeExceeded(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setAuditTestHome(t)
 	if err := SaveSettings(Settings{MaxSizeBytes: 10, MaxBackups: 5, RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestLogRotatesWhenSizeExceeded(t *testing.T) {
 }
 
 func TestConcurrentLog(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setAuditTestHome(t)
 	const workers = 20
 	const perWorker = 5
 	done := make(chan struct{}, workers)

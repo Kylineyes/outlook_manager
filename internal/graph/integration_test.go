@@ -12,7 +12,7 @@ import (
 )
 
 func TestMockGraphMailAndCalendarFlow(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	var sentBody string
 	var scheduleBody string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

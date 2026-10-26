@@ -37,7 +37,7 @@ func (t *draftAttachmentTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func TestAddDraftAttachmentSmall(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	transport := &draftAttachmentTransport{}
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: transport}
@@ -63,7 +63,7 @@ func TestAddDraftAttachmentSmall(t *testing.T) {
 }
 
 func TestDeleteDraftAttachment(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	transport := &draftAttachmentTransport{}
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: transport}
@@ -81,7 +81,7 @@ func TestDeleteDraftAttachment(t *testing.T) {
 }
 
 func TestReplaceDraftAttachmentAddsThenDeletes(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	transport := &draftAttachmentTransport{}
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: transport}

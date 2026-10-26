@@ -24,7 +24,7 @@ func (t *multiFolderRuleTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func TestApplyMessageRuleToFoldersDryRun(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setGraphTestHome(t)
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: &multiFolderRuleTransport{}}
 	defer func() { httpClient = oldClient }()

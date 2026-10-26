@@ -8,7 +8,7 @@ import (
 )
 
 func TestSaveLoadAndSearch(t *testing.T) {
-	t.Setenv("USERPROFILE", t.TempDir())
+	setLocalIndexTestHome(t)
 	snapshot := &Snapshot{
 		Messages: []graph.Message{{ID: "m1", Subject: "账单通知", BodyPreview: "本月账单", ReceivedDateTime: time.Now()}},
 		Contacts: []graph.Contact{{ID: "c1", DisplayName: "张三", EmailAddresses: []graph.ContactEmailAddress{{Address: "a@example.com"}}}},
