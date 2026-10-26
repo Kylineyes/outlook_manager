@@ -37,22 +37,63 @@ type EventResponseStatus struct {
 	Time     string `json:"time,omitempty"`
 }
 
+// RecurrencePattern 表示重复事件的模式。
+type RecurrencePattern struct {
+	Type           string   `json:"type"`
+	Interval       int      `json:"interval"`
+	DayOfMonth     int      `json:"dayOfMonth,omitempty"`
+	DaysOfWeek     []string `json:"daysOfWeek,omitempty"`
+	FirstDayOfWeek string   `json:"firstDayOfWeek,omitempty"`
+	Index          int      `json:"index,omitempty"`
+	Month          int      `json:"month,omitempty"`
+}
+
+// RecurrenceRange 表示重复事件的范围。
+type RecurrenceRange struct {
+	Type                string `json:"type"`
+	StartDate           string `json:"startDate"`
+	EndDate             string `json:"endDate,omitempty"`
+	NumberOfOccurrences int    `json:"numberOfOccurrences,omitempty"`
+	RecurrenceTimeZone  string `json:"recurrenceTimeZone,omitempty"`
+}
+
+// Recurrence 表示 Graph 重复事件配置。
+type Recurrence struct {
+	Pattern RecurrencePattern `json:"pattern"`
+	Range   RecurrenceRange   `json:"range"`
+}
+
+// EventAttendee 表示日历事件参与人。
+type EventAttendee struct {
+	EmailAddress EmailAddress         `json:"emailAddress"`
+	Type         string               `json:"type,omitempty"`
+	Status       *EventResponseStatus `json:"status,omitempty"`
+}
+
 // CalendarEvent 表示一个日历事件。
 type CalendarEvent struct {
-	ID             string               `json:"id"`
-	Subject        string               `json:"subject"`
-	Start          DateTimeTimeZone     `json:"start"`
-	End            DateTimeTimeZone     `json:"end"`
-	Location       EventLocation        `json:"location"`
-	Organizer      EventOrganizer       `json:"organizer"`
-	IsAllDay       bool                 `json:"isAllDay"`
-	WebLink        string               `json:"webLink"`
-	BodyPreview    string               `json:"bodyPreview"`
-	Categories     []string             `json:"categories,omitempty"`
-	ShowAs         string               `json:"showAs,omitempty"`
-	Importance     string               `json:"importance,omitempty"`
-	Sensitivity    string               `json:"sensitivity,omitempty"`
-	ResponseStatus *EventResponseStatus `json:"responseStatus,omitempty"`
+	ID                         string               `json:"id"`
+	Subject                    string               `json:"subject"`
+	Start                      DateTimeTimeZone     `json:"start"`
+	End                        DateTimeTimeZone     `json:"end"`
+	Location                   EventLocation        `json:"location"`
+	Organizer                  EventOrganizer       `json:"organizer"`
+	IsAllDay                   bool                 `json:"isAllDay"`
+	WebLink                    string               `json:"webLink"`
+	BodyPreview                string               `json:"bodyPreview"`
+	Categories                 []string             `json:"categories,omitempty"`
+	ShowAs                     string               `json:"showAs,omitempty"`
+	Importance                 string               `json:"importance,omitempty"`
+	Sensitivity                string               `json:"sensitivity,omitempty"`
+	ResponseStatus             *EventResponseStatus `json:"responseStatus,omitempty"`
+	Type                       string               `json:"type,omitempty"`
+	SeriesMasterID             string               `json:"seriesMasterId,omitempty"`
+	Recurrence                 *Recurrence          `json:"recurrence,omitempty"`
+	Body                       ItemBody             `json:"body,omitempty"`
+	Attendees                  []EventAttendee      `json:"attendees,omitempty"`
+	IsReminderOn               bool                 `json:"isReminderOn,omitempty"`
+	ReminderMinutesBeforeStart int                  `json:"reminderMinutesBeforeStart,omitempty"`
+	ICalUId                    string               `json:"iCalUId,omitempty"`
 }
 
 // ListCalendarEvents 读取默认日历在指定时间范围内的事件。
@@ -73,7 +114,7 @@ func ListCalendarEventsInCalendar(ctx context.Context, accessToken, calendarID s
 	query.Set("startDateTime", start.UTC().Format(time.RFC3339))
 	query.Set("endDateTime", end.UTC().Format(time.RFC3339))
 	query.Set("$top", strconv.Itoa(top))
-	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity,responseStatus")
+	query.Set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink,bodyPreview,categories,showAs,importance,sensitivity,responseStatus,type,seriesMasterId,recurrence,body,attendees,isReminderOn,reminderMinutesBeforeStart,iCalUId")
 	query.Set("$orderby", "start/dateTime")
 	endpoint := graphBaseURL + "/me/calendarView?" + query.Encode()
 	if strings.TrimSpace(calendarID) != "" {

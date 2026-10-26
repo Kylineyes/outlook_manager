@@ -81,7 +81,7 @@ func addTool[In any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandler
 
 func isReadOnlyTool(name string) bool {
 	switch name {
-	case "account_list", "audit_list", "mailbox_settings_get", "mailbox_auto_reply_get", "mailbox_timezone_get", "mail_query", "mail_view_list", "mail_folder_tree", "mail_list", "mail_read", "mail_search", "mail_folders_list",
+	case "account_list", "audit_list", "calendar_series_info", "calendar_free_busy", "calendar_find_meeting_times", "contacts_duplicates_scan", "sync_status", "local_search", "mailbox_settings_get", "mailbox_auto_reply_get", "mailbox_timezone_get", "mail_query", "mail_view_list", "mail_folder_tree", "mail_list", "mail_read", "mail_search", "mail_folders_list",
 		"mail_attachments_list", "mail_message_categories", "mail_rules_list",
 		"mail_master_categories_list", "calendar_list", "calendar_calendars_list",
 		"calendar_attachments_list", "calendar_attachment_get", "contacts_list",
@@ -94,7 +94,7 @@ func isReadOnlyTool(name string) bool {
 
 func isDestructiveTool(name string) bool {
 	switch name {
-	case "mail_delete", "mail_bulk_delete", "mail_permanent_delete", "mail_folder_delete", "mail_view_delete",
+	case "mail_delete", "mail_bulk_delete", "mail_permanent_delete", "mail_folder_delete", "mail_view_delete", "calendar_series_delete", "contacts_duplicates_merge", "sync_reset",
 		"mail_rule_delete", "mail_rule_apply", "mail_master_category_delete",
 		"mail_draft_attachment_delete", "mail_draft_attachment_replace",
 		"calendar_delete", "calendar_cancel", "calendar_attachment_delete", "calendar_attachment_replace", "calendar_attachment_bulk_delete", "contacts_delete", "contacts_bulk_delete", "mail_draft_attachment_bulk_delete",
@@ -919,6 +919,9 @@ func main() {
 
 	registerMailboxTools(server)
 	registerBulkStatusTools(server)
+	registerCalendarExtraTools(server)
+	registerContactExtraTools(server)
+	registerIndexTools(server)
 	registerEMLTools(server)
 	registerMailQueryTools(server)
 
