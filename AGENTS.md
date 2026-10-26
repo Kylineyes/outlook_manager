@@ -57,6 +57,7 @@ outlook_manager/
 - `views.json`：保存的邮件查询视图。
 - `index.json`：邮件、联系人和日历的本地索引。
 - `audit-config.json`：审计日志轮转和保留策略。
+- `cli-config.json`：CLI 输出格式、颜色和自动更新偏好。
 
 ### 3.4 第一阶段能力
 
