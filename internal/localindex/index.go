@@ -132,7 +132,8 @@ func Open() (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("打开 SQLite 索引失败: %w", err)
 	}
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
 	store := &Store{db: db, path: path}
 	if err := store.initialize(); err != nil {
 		_ = db.Close()
@@ -147,6 +148,29 @@ func (s *Store) Close() error {
 		return nil
 	}
 	return s.db.Close()
+}
+
+func (s *Store) migrateSearchDocs() error {
+	var value string
+	err := s.db.QueryRow(`SELECT value FROM meta WHERE key = 'search_docs_migrated'`).Scan(&value)
+	if err == nil && value == "1" {
+		return nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO search_docs(doc_id, account, kind, id) SELECT rowid, account, kind, id FROM search_fts`); err != nil {
+		return fmt.Errorf("迁移 FTS 文档映射失败: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO meta(key, value) VALUES('search_docs_migrated', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value`); err != nil {
+		return fmt.Errorf("保存 FTS 文档映射迁移状态失败: %w", err)
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ensureColumn(table, column, definition string) error {
@@ -183,6 +207,10 @@ func (s *Store) initialize() error {
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA busy_timeout=5000",
+		"PRAGMA cache_size=-65536",
+		"PRAGMA temp_store=MEMORY",
+		"PRAGMA mmap_size=268435456",
+		"PRAGMA wal_autocheckpoint=1000",
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS accounts (account TEXT PRIMARY KEY, synced_at TEXT, message_delta TEXT, contact_delta TEXT, event_delta TEXT, message_high_water TEXT)`,
 		`CREATE TABLE IF NOT EXISTS messages (account TEXT NOT NULL, id TEXT NOT NULL, subject TEXT, received_at TEXT, is_read INTEGER, has_attachments INTEGER, from_address TEXT, body_preview TEXT, data BLOB NOT NULL, PRIMARY KEY(account, id))`,
@@ -191,6 +219,8 @@ func (s *Store) initialize() error {
 		`CREATE INDEX IF NOT EXISTS idx_contacts_account_name ON contacts(account, display_name)`,
 		`CREATE TABLE IF NOT EXISTS events (account TEXT NOT NULL, id TEXT NOT NULL, subject TEXT, start_at TEXT, location TEXT, body_preview TEXT, data BLOB NOT NULL, PRIMARY KEY(account, id))`,
 		`CREATE INDEX IF NOT EXISTS idx_events_account_start ON events(account, start_at)`,
+		`CREATE TABLE IF NOT EXISTS search_docs (doc_id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL, UNIQUE(account, kind, id))`,
+		`CREATE INDEX IF NOT EXISTS idx_search_docs_lookup ON search_docs(account, kind, id)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(account UNINDEXED, kind UNINDEXED, id UNINDEXED, title, subtitle, body, timestamp UNINDEXED, tokenize='unicode61')`,
 	}
 	for _, statement := range statements {
@@ -199,6 +229,9 @@ func (s *Store) initialize() error {
 		}
 	}
 	if err := s.ensureColumn("accounts", "message_high_water", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.migrateSearchDocs(); err != nil {
 		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fmt.Sprintf("%d", schemaVersion)); err != nil {
@@ -434,7 +467,7 @@ func (s *Store) replaceMessages(account string, messages []graph.Message) error 
 	if _, err := tx.Exec(`DELETE FROM messages WHERE account = ?`, account); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM search_fts WHERE account = ? AND kind = 'mail'`, account); err != nil {
+	if err := deleteSearchKindTx(tx, account, "mail"); err != nil {
 		return err
 	}
 	for _, message := range messages {
@@ -479,7 +512,7 @@ func (s *Store) replaceContacts(account string, contacts []graph.Contact) error 
 	if _, err := tx.Exec(`DELETE FROM contacts WHERE account = ?`, account); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM search_fts WHERE account = ? AND kind = 'contact'`, account); err != nil {
+	if err := deleteSearchKindTx(tx, account, "contact"); err != nil {
 		return err
 	}
 	for _, contact := range contacts {
@@ -524,7 +557,7 @@ func (s *Store) replaceEvents(account string, events []graph.CalendarEvent) erro
 	if _, err := tx.Exec(`DELETE FROM events WHERE account = ?`, account); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM search_fts WHERE account = ? AND kind = 'event'`, account); err != nil {
+	if err := deleteSearchKindTx(tx, account, "event"); err != nil {
 		return err
 	}
 	for _, event := range events {
@@ -619,12 +652,41 @@ func deleteEventTx(tx *sql.Tx, account, id string) error {
 }
 
 func deleteSearchTx(tx *sql.Tx, account, kind, id string) error {
-	_, err := tx.Exec(`DELETE FROM search_fts WHERE account = ? AND kind = ? AND id = ?`, account, kind, id)
+	var docID int64
+	err := tx.QueryRow(`SELECT doc_id FROM search_docs WHERE account = ? AND kind = ? AND id = ?`, account, kind, id).Scan(&docID)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM search_fts WHERE rowid = ?`, docID); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`DELETE FROM search_docs WHERE doc_id = ?`, docID)
 	return err
 }
 
 func insertSearchTx(tx *sql.Tx, account, kind, id, title, subtitle, body string, timestamp time.Time) error {
-	_, err := tx.Exec(`INSERT INTO search_fts(account,kind,id,title,subtitle,body,timestamp) VALUES(?,?,?,?,?,?,?)`, account, kind, id, title, subtitle, body, timestamp.UTC().Format(time.RFC3339))
+	if _, err := tx.Exec(`INSERT INTO search_docs(account, kind, id) VALUES(?,?,?) ON CONFLICT(account, kind, id) DO NOTHING`, account, kind, id); err != nil {
+		return err
+	}
+	var docID int64
+	if err := tx.QueryRow(`SELECT doc_id FROM search_docs WHERE account = ? AND kind = ? AND id = ?`, account, kind, id).Scan(&docID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM search_fts WHERE rowid = ?`, docID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`INSERT INTO search_fts(rowid, account, kind, id, title, subtitle, body, timestamp) VALUES(?,?,?,?,?,?,?,?)`, docID, account, kind, id, title, subtitle, body, timestamp.UTC().Format(time.RFC3339))
+	return err
+}
+
+func deleteSearchKindTx(tx *sql.Tx, account, kind string) error {
+	if _, err := tx.Exec(`DELETE FROM search_fts WHERE rowid IN (SELECT doc_id FROM search_docs WHERE account = ? AND kind = ?)`, account, kind); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`DELETE FROM search_docs WHERE account = ? AND kind = ?`, account, kind)
 	return err
 }
 
@@ -855,7 +917,7 @@ func ResetAccount(account string) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, query := range []string{`DELETE FROM messages WHERE account = ?`, `DELETE FROM contacts WHERE account = ?`, `DELETE FROM events WHERE account = ?`, `DELETE FROM search_fts WHERE account = ?`, `DELETE FROM accounts WHERE account = ?`} {
+	for _, query := range []string{`DELETE FROM messages WHERE account = ?`, `DELETE FROM contacts WHERE account = ?`, `DELETE FROM events WHERE account = ?`, `DELETE FROM search_fts WHERE rowid IN (SELECT doc_id FROM search_docs WHERE account = ?)`, `DELETE FROM search_docs WHERE account = ?`, `DELETE FROM accounts WHERE account = ?`} {
 		if _, err := tx.Exec(query, account); err != nil {
 			return err
 		}
@@ -905,13 +967,30 @@ func PruneMessages(account string, before time.Time) (PruneResult, error) {
 	if err := tx.QueryRow(countSQL, params...).Scan(&count); err != nil {
 		return PruneResult{}, err
 	}
-	deleteSearchSQL := `DELETE FROM search_fts WHERE kind = 'mail' AND timestamp < ?`
-	searchParams := []any{before.UTC().Format(time.RFC3339)}
+	cutoff := before.UTC().Format(time.RFC3339)
+	deleteSearchSQL := `DELETE FROM search_fts WHERE rowid IN (
+		SELECT sd.doc_id FROM search_docs sd
+		JOIN messages m ON m.account = sd.account AND m.id = sd.id
+		WHERE sd.kind = 'mail' AND m.received_at < ?`
+	searchParams := []any{cutoff}
 	if account != "" {
-		deleteSearchSQL += ` AND account = ?`
+		deleteSearchSQL += ` AND sd.account = ?`
 		searchParams = append(searchParams, account)
 	}
+	deleteSearchSQL += `)`
 	if _, err := tx.Exec(deleteSearchSQL, searchParams...); err != nil {
+		return PruneResult{}, err
+	}
+	deleteDocsSQL := `DELETE FROM search_docs WHERE kind = 'mail' AND EXISTS (
+		SELECT 1 FROM messages m
+		WHERE m.account = search_docs.account AND m.id = search_docs.id AND m.received_at < ?`
+	docParams := []any{cutoff}
+	if account != "" {
+		deleteDocsSQL += ` AND m.account = ?`
+		docParams = append(docParams, account)
+	}
+	deleteDocsSQL += `)`
+	if _, err := tx.Exec(deleteDocsSQL, docParams...); err != nil {
 		return PruneResult{}, err
 	}
 	deleteSQL := `DELETE FROM messages WHERE received_at < ?`
@@ -937,7 +1016,13 @@ func Compact() error {
 	if _, err := store.db.Exec(`PRAGMA optimize`); err != nil {
 		return err
 	}
+	if _, err := store.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return err
+	}
 	if _, err := store.db.Exec(`VACUUM`); err != nil {
+		return err
+	}
+	if _, err := store.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 		return err
 	}
 	return nil
