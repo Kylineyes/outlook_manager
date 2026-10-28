@@ -96,14 +96,21 @@ type syncRunArgs struct {
 	Account  string `json:"account,omitempty" jsonschema:"账号邮箱或 HomeAccountID"`
 }
 
+type syncStatusArgs struct {
+	Account string `json:"account,omitempty" jsonschema:"只查看指定账号"`
+}
+
 type syncResetArgs struct {
-	Confirm bool `json:"confirm,omitempty" jsonschema:"确认删除本地索引"`
+	Account string `json:"account,omitempty" jsonschema:"只删除指定账号的索引"`
+	All     bool   `json:"all,omitempty" jsonschema:"删除全部账号的索引数据库"`
+	Confirm bool   `json:"confirm,omitempty" jsonschema:"确认删除本地索引"`
 }
 
 type localSearchArgs struct {
-	Query string `json:"query" jsonschema:"搜索关键字"`
-	Type  string `json:"type,omitempty" jsonschema:"all/mail/contact/event"`
-	Limit int    `json:"limit,omitempty" jsonschema:"最多返回数量"`
+	Query   string `json:"query" jsonschema:"搜索关键字"`
+	Type    string `json:"type,omitempty" jsonschema:"all/mail/contact/event"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"最多返回数量"`
+	Account string `json:"account,omitempty" jsonschema:"只搜索指定账号"`
 }
 
 func registerCalendarExtraTools(server *mcp.Server) {
@@ -413,48 +420,48 @@ func syncRunHandler(ctx context.Context, req *mcp.CallToolRequest, args syncRunA
 	if err != nil {
 		return nil, nil, err
 	}
-	snapshot, err := localindex.Load()
-	if err != nil {
-		return nil, nil, err
-	}
-	report, err := localindex.Sync(ctx, login.AccessToken, snapshot, options)
+	report, err := localindex.Sync(ctx, login.AccessToken, options, login.Account.Username)
 	if err != nil {
 		return nil, nil, err
 	}
 	return jsonResult(map[string]any{"success": true, "account": login.Account.Username, "report": report})
 }
 
-func syncStatusHandler(ctx context.Context, req *mcp.CallToolRequest, args struct{}) (*mcp.CallToolResult, any, error) {
-	snapshot, err := localindex.Load()
+func syncStatusHandler(ctx context.Context, req *mcp.CallToolRequest, args syncStatusArgs) (*mcp.CallToolResult, any, error) {
+	stats, err := localindex.LoadStats(args.Account)
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(map[string]any{"success": true, "version": snapshot.Version, "syncedAt": snapshot.SyncedAt, "messages": len(snapshot.Messages), "contacts": len(snapshot.Contacts), "events": len(snapshot.Events)})
+	return jsonResult(map[string]any{"success": true, "stats": stats})
 }
 
 func syncResetHandler(ctx context.Context, req *mcp.CallToolRequest, args syncResetArgs) (*mcp.CallToolResult, any, error) {
 	if !args.Confirm {
 		return nil, nil, fmt.Errorf("删除本地索引需要 confirm=true")
 	}
-	path, err := localindex.IndexPath()
-	if err != nil {
+	if strings.TrimSpace(args.Account) != "" {
+		if err := localindex.ResetAccount(strings.TrimSpace(args.Account)); err != nil {
+			return nil, nil, err
+		}
+		return jsonResult(map[string]any{"success": true, "account": args.Account})
+	}
+	if !args.All {
+		return nil, nil, fmt.Errorf("删除全部索引需要 all=true，或提供 account")
+	}
+	if err := localindex.ResetAll(); err != nil {
 		return nil, nil, err
 	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return nil, nil, err
-	}
-	return jsonResult(map[string]any{"success": true, "path": path})
+	return jsonResult(map[string]any{"success": true, "all": true})
 }
 
 func localSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args localSearchArgs) (*mcp.CallToolResult, any, error) {
 	if strings.TrimSpace(args.Query) == "" {
 		return nil, nil, fmt.Errorf("搜索关键字不能为空")
 	}
-	snapshot, err := localindex.Load()
+	hits, err := localindex.Search(args.Account, args.Query, args.Type, args.Limit)
 	if err != nil {
 		return nil, nil, err
 	}
-	hits := localindex.Search(snapshot, args.Query, args.Type, args.Limit)
 	return jsonResult(map[string]any{"success": true, "count": len(hits), "hits": hits})
 }
 

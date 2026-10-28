@@ -55,7 +55,7 @@ outlook_manager/
 - `logs\auth.log`：登录、刷新、失败日志，不记录 token。
 - `logs\audit.log`：关键写操作的 JSON Lines 审计日志，不记录正文、附件或 token；默认 10 MiB 轮转，保留 5 个历史文件，清理 30 天前日志。
 - `views.json`：保存的邮件查询视图。
-- `index.json`：邮件、联系人和日历的本地索引。
+- `index.db`：SQLite + FTS5 本地索引，按账号隔离。
 - `audit-config.json`：审计日志轮转和保留策略。
 - `cli-config.json`：CLI 输出格式、颜色和自动更新偏好。
 
@@ -82,6 +82,7 @@ outlook_manager/
 - `outlookctl sync run`
 - `outlookctl sync status`
 - `outlookctl sync reset`
+- `outlookctl sync compact`
 - `outlookctl search`
 - `outlookctl mailbox settings`
 - `outlookctl mailbox auto-reply`

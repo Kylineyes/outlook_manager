@@ -4775,7 +4775,9 @@ func printUsage() {
   outlookctl ui                            打开交互式文本菜单
   outlookctl sync run                     同步本地索引
   outlookctl sync status                  查看本地索引状态
-  outlookctl sync reset --confirm         删除本地索引
+  outlookctl sync reset --account <邮箱> --confirm  删除单账号索引
+  outlookctl sync reset --all --confirm   删除全部索引
+  outlookctl sync compact                 压缩和优化 SQLite 索引
   outlookctl search --query <关键字>       搜索本地索引
   outlookctl audit list [--limit 50]       查询本地审计日志
   outlookctl audit export --out <文件> --format csv|json  导出审计日志

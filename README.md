@@ -23,6 +23,8 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 本地操作审计日志（轮转、查询、导出、统计与哈希链校验）
 - 审计保留策略配置与手动清理
 - 本地索引、增量同步与离线搜索
+- SQLite + FTS5 全文索引、多账号独立索引和增量写入
+- 索引压缩优化和 1 万条级搜索 benchmark
 - 发送邮件
 - 回复、回复全部、转发
 - 标记已读 / 未读
@@ -276,7 +278,7 @@ docs/mcp.md
 - `logs\auth.log`：预留的认证日志位置
 - `logs\audit.log`：JSON Lines 操作审计日志
 - `views.json`：保存的邮件查询视图
-- `index.json`：邮件、联系人和日历的本地索引
+- `index.db`：SQLite + FTS5 本地索引，按账号隔离
 - `cli-config.json`：CLI 输出格式、颜色和自动更新偏好
 - `audit-config.json`：审计日志轮转和保留策略
 
@@ -297,6 +299,9 @@ outlookctl contacts bulk-delete --ids <id1,id2> [--confirm]
 outlookctl sync run
 outlookctl sync status
 outlookctl sync reset --confirm
+outlookctl sync compact
+outlookctl sync status --account zero-67@hotmail.com
+outlookctl search --query 账单 --account zero-67@hotmail.com
 outlookctl search --query <关键字> --type all
 outlookctl audit list --action mail. --json
 outlookctl audit export --out C:\temp\audit.csv --format csv

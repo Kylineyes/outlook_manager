@@ -300,10 +300,10 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `contacts_bulk_delete` | 批量删除联系人，默认 dry-run | `ids`、`confirm`、`account` |
 | `contacts_duplicates_scan` | 扫描重复联系人 | `strategy`、`folder`、`max`、`account` |
 | `contacts_duplicates_merge` | 合并重复联系人，默认 dry-run | `strategy`、`folder`、`max`、`confirm`、`account` |
-| `sync_run` | 同步本地索引，delta 不可用时回退全量 | `mail`、`contacts`、`events`、`max`、`account` |
-| `sync_status` | 查看本地索引状态 | 无 |
-| `sync_reset` | 删除本地索引 | `confirm` |
-| `local_search` | 搜索本地索引 | `query`、`type`、`limit` |
+| `sync_run` | 同步指定账号的 SQLite/FTS 索引，delta 不可用时回退全量 | `mail`、`contacts`、`events`、`max`、`account` |
+| `sync_status` | 查看本地索引状态 | `account` |
+| `sync_reset` | 删除本地索引 | `account`、`all`、`confirm` |
+| `local_search` | 搜索本地 SQLite/FTS 索引 | `query`、`type`、`limit`、`account` |
 | `contacts_export` | 导出联系人到 CSV 或 vCard | `file`、`format`、`folder`、`max`、`account` |
 | `contacts_import` | 从 CSV 或 vCard 导入联系人 | `file`、`format`、`folder`、`max`、`confirm`、`account` |
 
@@ -885,6 +885,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 ```
 
 > 个人 Microsoft 账号可能不支持部分 Graph delta 端点；此时 `sync_run` 会自动回退为全量同步，并在 `warnings` 中说明。
+
+本地索引使用 SQLite + FTS5，按账号隔离；`sync compact` 可执行 `PRAGMA optimize` 和 `VACUUM`。
 
 ### 7.27 审计日志增强
 

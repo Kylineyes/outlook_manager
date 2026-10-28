@@ -9,7 +9,8 @@
 - Linux Secret Service / macOS Keychain 安全存储
 - 自动更新检查：`outlookctl update check` 和 MCP `update_check`
 - 审计日志查询、导出、统计和哈希链校验
-- 本地索引、Graph delta 同步和离线搜索
+- SQLite + FTS5 本地索引、多账号隔离和增量事务写入
+- 索引压缩优化和 1 万条级搜索 benchmark
 - 日历 ICS 导入导出、重复事件系列操作和空闲查询
 - 联系人重复检测与合并
 - 批量邮件状态操作
