@@ -58,6 +58,7 @@ outlook_manager/
 - `index.db`：SQLite + FTS5 本地索引，按账号隔离。
 - `audit-config.json`：审计日志轮转和保留策略。
 - `cli-config.json`：CLI 输出格式、颜色和自动更新偏好。
+- `uploads\`：大附件断点续传状态。
 
 ### 3.4 第一阶段能力
 
@@ -74,6 +75,7 @@ outlook_manager/
 - `outlookctl doctor`
 - `outlookctl completion`
 - `outlookctl config`
+- `outlookctl config alias`
 - `outlookctl ui`
 - `outlookctl update check`
 - 全局参数 `--no-update-check`：跳过启动更新检查

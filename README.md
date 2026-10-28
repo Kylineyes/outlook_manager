@@ -90,6 +90,10 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - CLI doctor 环境与账号诊断
 - 邮件列表、搜索、详情、附件对应的 MCP tools
 - Shell 自动补全、彩色/表格输出和交互菜单
+- 输出格式 text/table/json/yaml/jsonl
+- 用户自定义命令别名、未知命令建议和统一退出码
+- 全屏文本菜单（TTY 自动启用）
+- 大附件上传进度、断点状态和中断续传
 - CLI 配置文件与输出格式偏好
 - 自动更新检查、下载、SHA256/GPG 校验、替换和回滚
 - 启动时每日自动更新检查与缓存，支持 --no-update-check
@@ -282,6 +286,7 @@ docs/mcp.md
 - `views.json`：保存的邮件查询视图
 - `index.db`：SQLite + FTS5 本地索引，按账号隔离
 - `cli-config.json`：CLI 输出格式、颜色和自动更新偏好
+- `uploads\`：大附件断点续传状态
 - `audit-config.json`：审计日志轮转和保留策略
 
 查询审计日志：
@@ -316,6 +321,10 @@ outlookctl update check
 outlookctl completion powershell
 outlookctl config set --output table
 outlookctl config set --auto-update-check
+outlookctl config alias set m "mail list"
+outlookctl m --top 5 --output yaml
+outlookctl mail send --to someone@example.com --subject "大附件" --body "正文" --attach C:\temp\large.zip
+outlookctl mail send --to someone@example.com --subject "大附件" --body "正文" --attach C:\temp\large.zip --no-progress
 outlookctl mail list --output table
 outlookctl ui
 outlookctl update download
