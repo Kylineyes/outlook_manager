@@ -4778,6 +4778,7 @@ func printUsage() {
   outlookctl sync reset --account <邮箱> --confirm  删除单账号索引
   outlookctl sync reset --all --confirm   删除全部索引
   outlookctl sync compact                 压缩和优化 SQLite 索引
+  outlookctl sync prune --older-than-days 90 --confirm  清理旧邮件索引
   outlookctl search --query <关键字>       搜索本地索引
   outlookctl audit list [--limit 50]       查询本地审计日志
   outlookctl audit export --out <文件> --format csv|json  导出审计日志

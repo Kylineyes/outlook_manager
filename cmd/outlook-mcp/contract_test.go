@@ -34,7 +34,7 @@ func TestToolRegistrationContract(t *testing.T) {
 			count++
 		}
 	}
-	if count != 116 {
-		t.Fatalf("tool count = %d, want 116", count)
+	if count != 118 {
+		t.Fatalf("tool count = %d, want 118", count)
 	}
 }

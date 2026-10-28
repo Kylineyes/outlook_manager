@@ -32,6 +32,7 @@ type SyncOptions struct {
 	Contacts bool
 	Events   bool
 	Max      int
+	Full     bool
 }
 
 // SyncReport 表示同步结果。
@@ -49,23 +50,25 @@ type SyncReport struct {
 
 // AccountStats 表示单账号索引统计。
 type AccountStats struct {
-	Account      string    `json:"account"`
-	SyncedAt     time.Time `json:"syncedAt"`
-	Messages     int       `json:"messages"`
-	Contacts     int       `json:"contacts"`
-	Events       int       `json:"events"`
-	MessageDelta bool      `json:"messageDelta"`
-	ContactDelta bool      `json:"contactDelta"`
-	EventDelta   bool      `json:"eventDelta"`
+	Account          string    `json:"account"`
+	SyncedAt         time.Time `json:"syncedAt"`
+	Messages         int       `json:"messages"`
+	Contacts         int       `json:"contacts"`
+	Events           int       `json:"events"`
+	MessageDelta     bool      `json:"messageDelta"`
+	ContactDelta     bool      `json:"contactDelta"`
+	EventDelta       bool      `json:"eventDelta"`
+	MessageHighWater time.Time `json:"messageHighWater,omitempty"`
 }
 
 // Stats 表示本地索引统计。
 type Stats struct {
-	Version       int            `json:"version"`
-	Accounts      []AccountStats `json:"accounts"`
-	TotalMessages int            `json:"totalMessages"`
-	TotalContacts int            `json:"totalContacts"`
-	TotalEvents   int            `json:"totalEvents"`
+	Version           int            `json:"version"`
+	Accounts          []AccountStats `json:"accounts"`
+	TotalMessages     int            `json:"totalMessages"`
+	TotalContacts     int            `json:"totalContacts"`
+	TotalEvents       int            `json:"totalEvents"`
+	DatabaseSizeBytes int64          `json:"databaseSizeBytes"`
 }
 
 // Hit 表示本地搜索结果。
@@ -80,11 +83,12 @@ type Hit struct {
 }
 
 type accountMeta struct {
-	Account      string
-	SyncedAt     time.Time
-	MessageDelta string
-	ContactDelta string
-	EventDelta   string
+	Account          string
+	SyncedAt         time.Time
+	MessageDelta     string
+	ContactDelta     string
+	EventDelta       string
+	MessageHighWater time.Time
 }
 
 type legacySnapshot struct {
@@ -145,6 +149,33 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) ensureColumn(table, column, definition string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == column {
+			found = true
+		}
+	}
+	rows.Close()
+	if found {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
+	return err
+}
+
 func (s *Store) initialize() error {
 	statements := []string{
 		"PRAGMA page_size=8192",
@@ -153,7 +184,7 @@ func (s *Store) initialize() error {
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA busy_timeout=5000",
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS accounts (account TEXT PRIMARY KEY, synced_at TEXT, message_delta TEXT, contact_delta TEXT, event_delta TEXT)`,
+		`CREATE TABLE IF NOT EXISTS accounts (account TEXT PRIMARY KEY, synced_at TEXT, message_delta TEXT, contact_delta TEXT, event_delta TEXT, message_high_water TEXT)`,
 		`CREATE TABLE IF NOT EXISTS messages (account TEXT NOT NULL, id TEXT NOT NULL, subject TEXT, received_at TEXT, is_read INTEGER, has_attachments INTEGER, from_address TEXT, body_preview TEXT, data BLOB NOT NULL, PRIMARY KEY(account, id))`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_account_received ON messages(account, received_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS contacts (account TEXT NOT NULL, id TEXT NOT NULL, display_name TEXT, emails TEXT, phones TEXT, company TEXT, data BLOB NOT NULL, PRIMARY KEY(account, id))`,
@@ -166,6 +197,9 @@ func (s *Store) initialize() error {
 		if _, err := s.db.Exec(statement); err != nil {
 			return fmt.Errorf("初始化 SQLite 索引失败 (%s): %w", statement, err)
 		}
+	}
+	if err := s.ensureColumn("accounts", "message_high_water", "TEXT"); err != nil {
+		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fmt.Sprintf("%d", schemaVersion)); err != nil {
 		return fmt.Errorf("写入索引版本失败: %w", err)
@@ -193,7 +227,7 @@ func Sync(ctx context.Context, accessToken string, options SyncOptions, account 
 	}
 	report := &SyncReport{Account: account}
 	if options.Messages {
-		mode, warning := store.syncMessages(ctx, accessToken, account, &meta, options.Max)
+		mode, warning := store.syncMessages(ctx, accessToken, account, &meta, options.Max, options.Full)
 		report.MessageMode = mode
 		if warning != "" {
 			report.Warnings = append(report.Warnings, warning)
@@ -226,24 +260,54 @@ func Sync(ctx context.Context, accessToken string, options SyncOptions, account 
 	return report, nil
 }
 
-func (s *Store) syncMessages(ctx context.Context, accessToken, account string, meta *accountMeta, max int) (string, string) {
-	result, err := graph.DeltaMessages(ctx, accessToken, meta.MessageDelta, max)
-	if err == nil {
-		if applyErr := s.applyMessageDelta(account, result.Items, result.Removed); applyErr != nil {
-			return "failed", applyErr.Error()
+func (s *Store) syncMessages(ctx context.Context, accessToken, account string, meta *accountMeta, max int, forceFull bool) (string, string) {
+	syncStarted := time.Now().UTC()
+	if !forceFull {
+		if meta.MessageDelta != "" {
+			result, err := graph.DeltaMessages(ctx, accessToken, meta.MessageDelta, max)
+			if err == nil {
+				if applyErr := s.applyMessageDelta(account, result.Items, result.Removed); applyErr != nil {
+					return "failed", applyErr.Error()
+				}
+				meta.MessageDelta = result.DeltaLink
+				meta.MessageHighWater = syncStarted
+				return "delta", ""
+			}
 		}
-		meta.MessageDelta = result.DeltaLink
-		return "delta", ""
+		if !meta.MessageHighWater.IsZero() {
+			items, err := graph.ListMessagesModifiedSince(ctx, accessToken, meta.MessageHighWater, max)
+			if err == nil {
+				if applyErr := s.applyMessageDelta(account, items, nil); applyErr != nil {
+					return "failed", applyErr.Error()
+				}
+				meta.MessageHighWater = syncStarted
+				meta.MessageDelta = ""
+				return "high-water", ""
+			}
+			items, receivedErr := graph.ListMessagesReceivedSince(ctx, accessToken, meta.MessageHighWater, max)
+			if receivedErr == nil {
+				if applyErr := s.applyMessageDelta(account, items, nil); applyErr != nil {
+					return "failed", applyErr.Error()
+				}
+				meta.MessageHighWater = syncStarted
+				meta.MessageDelta = ""
+				return "high-water-received", ""
+			}
+		}
 	}
 	items, fullErr := graph.ListAllMessagesAll(ctx, accessToken, max)
 	if fullErr != nil {
-		return "failed", fmt.Sprintf("邮件同步失败: delta=%v; full=%v", err, fullErr)
+		return "failed", fmt.Sprintf("邮件同步失败: %v", fullErr)
 	}
 	if replaceErr := s.replaceMessages(account, items); replaceErr != nil {
 		return "failed", replaceErr.Error()
 	}
 	meta.MessageDelta = ""
-	return "full-fallback", fmt.Sprintf("邮件 delta 不可用，已回退全量: %v", err)
+	meta.MessageHighWater = syncStarted
+	if forceFull {
+		return "full", ""
+	}
+	return "full-fallback", "增量同步不可用，已回退全量同步"
 }
 
 func (s *Store) syncContacts(ctx context.Context, accessToken, account string, meta *accountMeta, max int) (string, string) {
@@ -288,9 +352,9 @@ func (s *Store) syncEvents(ctx context.Context, accessToken, account string, met
 
 func (s *Store) loadAccountMeta(account string) (accountMeta, error) {
 	meta := accountMeta{Account: account}
-	var syncedAt string
-	row := s.db.QueryRow(`SELECT COALESCE(synced_at,''), COALESCE(message_delta,''), COALESCE(contact_delta,''), COALESCE(event_delta,'') FROM accounts WHERE account = ?`, account)
-	if err := row.Scan(&syncedAt, &meta.MessageDelta, &meta.ContactDelta, &meta.EventDelta); err != nil {
+	var syncedAt, messageHighWater string
+	row := s.db.QueryRow(`SELECT COALESCE(synced_at,''), COALESCE(message_delta,''), COALESCE(contact_delta,''), COALESCE(event_delta,''), COALESCE(message_high_water,'') FROM accounts WHERE account = ?`, account)
+	if err := row.Scan(&syncedAt, &meta.MessageDelta, &meta.ContactDelta, &meta.EventDelta, &messageHighWater); err != nil {
 		if err != sql.ErrNoRows {
 			return meta, fmt.Errorf("读取账号索引元数据失败: %w", err)
 		}
@@ -301,12 +365,15 @@ func (s *Store) loadAccountMeta(account string) (accountMeta, error) {
 	if syncedAt != "" {
 		meta.SyncedAt, _ = time.Parse(time.RFC3339, syncedAt)
 	}
+	if messageHighWater != "" {
+		meta.MessageHighWater, _ = time.Parse(time.RFC3339, messageHighWater)
+	}
 	return meta, nil
 }
 
 func (s *Store) saveAccountMeta(meta accountMeta) error {
-	_, err := s.db.Exec(`INSERT INTO accounts(account, synced_at, message_delta, contact_delta, event_delta) VALUES(?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET synced_at=excluded.synced_at, message_delta=excluded.message_delta, contact_delta=excluded.contact_delta, event_delta=excluded.event_delta`,
-		meta.Account, meta.SyncedAt.UTC().Format(time.RFC3339), meta.MessageDelta, meta.ContactDelta, meta.EventDelta)
+	_, err := s.db.Exec(`INSERT INTO accounts(account, synced_at, message_delta, contact_delta, event_delta, message_high_water) VALUES(?,?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET synced_at=excluded.synced_at, message_delta=excluded.message_delta, contact_delta=excluded.contact_delta, event_delta=excluded.event_delta, message_high_water=excluded.message_high_water`,
+		meta.Account, meta.SyncedAt.UTC().Format(time.RFC3339), meta.MessageDelta, meta.ContactDelta, meta.EventDelta, meta.MessageHighWater.UTC().Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("保存账号索引元数据失败: %w", err)
 	}
@@ -579,7 +646,7 @@ func LoadStats(account string) (*Stats, error) {
 }
 
 func (s *Store) Stats(account string) (*Stats, error) {
-	query := `SELECT account, COALESCE(synced_at,''), COALESCE(message_delta,''), COALESCE(contact_delta,''), COALESCE(event_delta,'') FROM accounts`
+	query := `SELECT account, COALESCE(synced_at,''), COALESCE(message_delta,''), COALESCE(contact_delta,''), COALESCE(event_delta,''), COALESCE(message_high_water,'') FROM accounts`
 	args := []any{}
 	if strings.TrimSpace(account) != "" {
 		query += ` WHERE account = ?`
@@ -594,8 +661,8 @@ func (s *Store) Stats(account string) (*Stats, error) {
 	stats := &Stats{Version: schemaVersion, Accounts: []AccountStats{}}
 	for rows.Next() {
 		var item AccountStats
-		var syncedAt, messageDelta, contactDelta, eventDelta string
-		if err := rows.Scan(&item.Account, &syncedAt, &messageDelta, &contactDelta, &eventDelta); err != nil {
+		var syncedAt, messageDelta, contactDelta, eventDelta, messageHighWater string
+		if err := rows.Scan(&item.Account, &syncedAt, &messageDelta, &contactDelta, &eventDelta, &messageHighWater); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -603,6 +670,7 @@ func (s *Store) Stats(account string) (*Stats, error) {
 		item.MessageDelta = messageDelta != ""
 		item.ContactDelta = contactDelta != ""
 		item.EventDelta = eventDelta != ""
+		item.MessageHighWater, _ = time.Parse(time.RFC3339, messageHighWater)
 		stats.Accounts = append(stats.Accounts, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -621,6 +689,11 @@ func (s *Store) Stats(account string) (*Stats, error) {
 		stats.TotalMessages += counts[0]
 		stats.TotalContacts += counts[1]
 		stats.TotalEvents += counts[2]
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if info, err := os.Stat(s.path + suffix); err == nil {
+			stats.DatabaseSizeBytes += info.Size()
+		}
 	}
 	return stats, nil
 }
@@ -802,6 +875,56 @@ func ResetAll() error {
 		}
 	}
 	return nil
+}
+
+// PruneResult 表示索引清理结果。
+type PruneResult struct {
+	Deleted int64 `json:"deleted"`
+}
+
+// PruneMessages 删除指定时间之前的邮件索引。
+func PruneMessages(account string, before time.Time) (PruneResult, error) {
+	store, err := Open()
+	if err != nil {
+		return PruneResult{}, err
+	}
+	defer store.Close()
+	account = strings.TrimSpace(account)
+	tx, err := store.db.Begin()
+	if err != nil {
+		return PruneResult{}, err
+	}
+	defer tx.Rollback()
+	countSQL := `SELECT COUNT(*) FROM messages WHERE received_at < ?`
+	params := []any{before.UTC().Format(time.RFC3339)}
+	if account != "" {
+		countSQL += ` AND account = ?`
+		params = append(params, account)
+	}
+	var count int64
+	if err := tx.QueryRow(countSQL, params...).Scan(&count); err != nil {
+		return PruneResult{}, err
+	}
+	deleteSearchSQL := `DELETE FROM search_fts WHERE kind = 'mail' AND timestamp < ?`
+	searchParams := []any{before.UTC().Format(time.RFC3339)}
+	if account != "" {
+		deleteSearchSQL += ` AND account = ?`
+		searchParams = append(searchParams, account)
+	}
+	if _, err := tx.Exec(deleteSearchSQL, searchParams...); err != nil {
+		return PruneResult{}, err
+	}
+	deleteSQL := `DELETE FROM messages WHERE received_at < ?`
+	if account != "" {
+		deleteSQL += ` AND account = ?`
+	}
+	if _, err := tx.Exec(deleteSQL, params...); err != nil {
+		return PruneResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return PruneResult{}, err
+	}
+	return PruneResult{Deleted: count}, nil
 }
 
 // Compact 压缩并优化 SQLite 索引。

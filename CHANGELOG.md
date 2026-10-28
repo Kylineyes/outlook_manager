@@ -10,6 +10,7 @@
 - 自动更新检查：`outlookctl update check` 和 MCP `update_check`
 - 审计日志查询、导出、统计和哈希链校验
 - SQLite + FTS5 本地索引、多账号隔离和增量事务写入
+- 邮件高水位增量同步、索引保留清理和 10 万条 benchmark
 - 索引压缩优化和 1 万条级搜索 benchmark
 - 日历 ICS 导入导出、重复事件系列操作和空闲查询
 - 联系人重复检测与合并
@@ -22,7 +23,7 @@
 
 ### Changed
 
-- MCP 工具数量增加到 116
+- MCP 工具数量增加到 118
 - 测试使用临时 HOME/USERPROFILE 隔离
 - ICS golden 测试兼容不同换行符
 

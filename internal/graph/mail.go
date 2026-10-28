@@ -15,18 +15,19 @@ import (
 // Message 表示收件箱中的一封邮件。
 // 当前只保留 CLI 展示和后续 MCP 工具需要的最小字段。
 type Message struct {
-	ID               string      `json:"id"`
-	Subject          string      `json:"subject"`
-	ReceivedDateTime time.Time   `json:"receivedDateTime"`
-	IsRead           bool        `json:"isRead"`
-	WebLink          string      `json:"webLink"`
-	BodyPreview      string      `json:"bodyPreview"`
-	HasAttachments   bool        `json:"hasAttachments"`
-	Importance       string      `json:"importance,omitempty"`
-	From             MessageFrom `json:"from"`
-	ToRecipients     []Recipient `json:"toRecipients,omitempty"`
-	CcRecipients     []Recipient `json:"ccRecipients,omitempty"`
-	Categories       []string    `json:"categories,omitempty"`
+	ID                   string      `json:"id"`
+	Subject              string      `json:"subject"`
+	ReceivedDateTime     time.Time   `json:"receivedDateTime"`
+	LastModifiedDateTime time.Time   `json:"lastModifiedDateTime,omitempty"`
+	IsRead               bool        `json:"isRead"`
+	WebLink              string      `json:"webLink"`
+	BodyPreview          string      `json:"bodyPreview"`
+	HasAttachments       bool        `json:"hasAttachments"`
+	Importance           string      `json:"importance,omitempty"`
+	From                 MessageFrom `json:"from"`
+	ToRecipients         []Recipient `json:"toRecipients,omitempty"`
+	CcRecipients         []Recipient `json:"ccRecipients,omitempty"`
+	Categories           []string    `json:"categories,omitempty"`
 }
 
 // MessageFrom 表示邮件的发件人信息。

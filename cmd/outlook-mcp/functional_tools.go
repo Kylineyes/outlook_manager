@@ -113,6 +113,12 @@ type localSearchArgs struct {
 	Account string `json:"account,omitempty" jsonschema:"只搜索指定账号"`
 }
 
+type syncPruneArgs struct {
+	Account       string `json:"account,omitempty" jsonschema:"只清理指定账号"`
+	OlderThanDays int    `json:"olderThanDays,omitempty" jsonschema:"删除多少天之前的邮件索引"`
+	Confirm       bool   `json:"confirm,omitempty" jsonschema:"确认删除索引记录"`
+}
+
 func registerCalendarExtraTools(server *mcp.Server) {
 	addTool(server, newTool("calendar_export_ics", "导出日历事件为 ICS 文件"), calendarExportICSHandler)
 	addTool(server, newTool("calendar_import_ics", "从 ICS 文件导入日历事件"), calendarImportICSHandler)
@@ -133,6 +139,8 @@ func registerIndexTools(server *mcp.Server) {
 	addTool(server, newTool("sync_status", "查看本地索引状态"), syncStatusHandler)
 	addTool(server, newTool("sync_reset", "删除本地索引"), syncResetHandler)
 	addTool(server, newTool("local_search", "搜索本地索引"), localSearchHandler)
+	addTool(server, newTool("sync_compact", "压缩和优化本地 SQLite 索引"), syncCompactHandler)
+	addTool(server, newTool("sync_prune", "清理旧邮件索引"), syncPruneHandler)
 }
 
 func calendarExportICSHandler(ctx context.Context, req *mcp.CallToolRequest, args calendarExportICSArgs) (*mcp.CallToolResult, any, error) {
@@ -452,6 +460,29 @@ func syncResetHandler(ctx context.Context, req *mcp.CallToolRequest, args syncRe
 		return nil, nil, err
 	}
 	return jsonResult(map[string]any{"success": true, "all": true})
+}
+
+func syncCompactHandler(ctx context.Context, req *mcp.CallToolRequest, args emptyArgs) (*mcp.CallToolResult, any, error) {
+	if err := localindex.Compact(); err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{"success": true})
+}
+
+func syncPruneHandler(ctx context.Context, req *mcp.CallToolRequest, args syncPruneArgs) (*mcp.CallToolResult, any, error) {
+	if !args.Confirm {
+		return nil, nil, fmt.Errorf("清理索引需要 confirm=true")
+	}
+	days := args.OlderThanDays
+	if days <= 0 {
+		days = 90
+	}
+	before := time.Now().UTC().AddDate(0, 0, -days)
+	result, err := localindex.PruneMessages(args.Account, before)
+	if err != nil {
+		return nil, nil, err
+	}
+	return jsonResult(map[string]any{"success": true, "deleted": result.Deleted, "before": before})
 }
 
 func localSearchHandler(ctx context.Context, req *mcp.CallToolRequest, args localSearchArgs) (*mcp.CallToolResult, any, error) {

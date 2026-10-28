@@ -14,7 +14,7 @@ import (
 
 func runSync(args []string) error {
 	if len(args) > 0 && helpRequested(args[:1]) {
-		fmt.Fprintln(os.Stdout, "用法: outlookctl sync <run|status|reset|compact>")
+		fmt.Fprintln(os.Stdout, "用法: outlookctl sync <run|status|reset|compact|prune>")
 		return nil
 	}
 	if len(args) == 0 {
@@ -29,6 +29,8 @@ func runSync(args []string) error {
 		return runSyncReset(args[1:])
 	case "compact":
 		return runSyncCompact(args[1:])
+	case "prune":
+		return runSyncPrune(args[1:])
 	default:
 		return fmt.Errorf("未知 sync 子命令: %s", args[0])
 	}
@@ -41,13 +43,14 @@ func runSyncRun(args []string) error {
 	contactsFlag := fs.Bool("contacts", false, "同步联系人")
 	eventsFlag := fs.Bool("events", false, "同步日历事件")
 	maxFlag := fs.Int("max", 1000, "每个类型最多同步多少条")
+	fullFlag := fs.Bool("full", false, "强制全量同步，忽略增量水位")
 	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
 	accountFlag := fs.String("account", "", "指定账号邮箱或 HomeAccountID")
 	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
 	all := !*mailFlag && !*contactsFlag && !*eventsFlag
-	options := localindex.SyncOptions{Messages: all || *mailFlag, Contacts: all || *contactsFlag, Events: all || *eventsFlag, Max: *maxFlag}
+	options := localindex.SyncOptions{Messages: all || *mailFlag, Contacts: all || *contactsFlag, Events: all || *eventsFlag, Max: *maxFlag, Full: *fullFlag}
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 	_, login, err := mailboxLogin(ctx, *accountFlag)
@@ -146,6 +149,35 @@ func runSyncCompact(args []string) error {
 		return err
 	}
 	fmt.Fprintln(os.Stdout, "本地索引已压缩和优化")
+	return nil
+}
+
+func runSyncPrune(args []string) error {
+	fs := flag.NewFlagSet("sync prune", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	accountFlag := fs.String("account", "", "只清理指定账号")
+	daysFlag := fs.Int("older-than-days", 90, "删除多少天之前的邮件索引")
+	confirmFlag := fs.Bool("confirm", false, "确认删除索引记录")
+	jsonFlag := fs.Bool("json", false, "以 JSON 格式输出")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	if !*confirmFlag {
+		return errors.New("清理索引需要 --confirm")
+	}
+	if *daysFlag <= 0 {
+		return errors.New("--older-than-days 必须大于 0")
+	}
+	before := time.Now().UTC().AddDate(0, 0, -*daysFlag)
+	result, err := localindex.PruneMessages(*accountFlag, before)
+	if err != nil {
+		return err
+	}
+	if *jsonFlag {
+		return printJSON(result)
+	}
+	fmt.Fprintf(os.Stdout, "已删除邮件索引: %d 条\n", result.Deleted)
+	fmt.Fprintf(os.Stdout, "截止时间: %s\n", before.Format(time.RFC3339))
 	return nil
 }
 

@@ -6,7 +6,7 @@
 
 - 构建与登录
 - MCP 客户端配置
-- 116 个 MCP tools 的分组说明
+- 118 个 MCP tools 的分组说明
 - 常用调用示例
 - 返回格式、故障排查和安全说明
 
@@ -158,7 +158,7 @@ npx @modelcontextprotocol/inspector C:\path\to\outlook-mcp.exe
 
 ## 6. 工具清单
 
-MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 116 个 tools 及主要参数。
+MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按能力分组列出 118 个 tools 及主要参数。
 
 ### 6.1 账号
 
@@ -304,6 +304,8 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 | `sync_status` | 查看本地索引状态 | `account` |
 | `sync_reset` | 删除本地索引 | `account`、`all`、`confirm` |
 | `local_search` | 搜索本地 SQLite/FTS 索引 | `query`、`type`、`limit`、`account` |
+| `sync_compact` | 压缩和优化 SQLite 索引 | 无 |
+| `sync_prune` | 清理旧邮件索引 | `account`、`olderThanDays`、`confirm` |
 | `contacts_export` | 导出联系人到 CSV 或 vCard | `file`、`format`、`folder`、`max`、`account` |
 | `contacts_import` | 从 CSV 或 vCard 导入联系人 | `file`、`format`、`folder`、`max`、`confirm`、`account` |
 
@@ -887,6 +889,7 @@ MCP 客户端会通过 `tools/list` 自动获取完整 JSON Schema。下面按�
 > 个人 Microsoft 账号可能不支持部分 Graph delta 端点；此时 `sync_run` 会自动回退为全量同步，并在 `warnings` 中说明。
 
 本地索引使用 SQLite + FTS5，按账号隔离；`sync compact` 可执行 `PRAGMA optimize` 和 `VACUUM`。
+邮件 delta 不可用时使用 `lastModifiedDateTime` 高水位增量；`sync prune` 可清理旧邮件索引。
 
 ### 7.27 审计日志增强
 

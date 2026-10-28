@@ -158,3 +158,93 @@ func BenchmarkSearch10K(b *testing.B) {
 		}
 	}
 }
+
+func TestHighWaterPersistence(t *testing.T) {
+	setLocalIndexTestHome(t)
+	s, err := Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := s.loadAccountMeta("a@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	water := time.Now().UTC().Truncate(time.Second)
+	meta.MessageHighWater = water
+	if err := s.saveAccountMeta(meta); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	loaded, err := s.loadAccountMeta("a@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.MessageHighWater.Equal(water) {
+		t.Fatalf("high water = %s, want %s", loaded.MessageHighWater, water)
+	}
+}
+
+func TestPruneMessages(t *testing.T) {
+	setLocalIndexTestHome(t)
+	s, err := Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().UTC().AddDate(0, 0, -120)
+	recent := time.Now().UTC()
+	if err := s.replaceMessages("a@example.com", []graph.Message{
+		{ID: "old", Subject: "old mail", ReceivedDateTime: old},
+		{ID: "new", Subject: "new mail", ReceivedDateTime: recent},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	result, err := PruneMessages("a@example.com", time.Now().UTC().AddDate(0, 0, -90))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", result.Deleted)
+	}
+	stats, err := LoadStats("a@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.TotalMessages != 1 {
+		t.Fatalf("messages after prune = %d", stats.TotalMessages)
+	}
+}
+
+func BenchmarkSearch100K(b *testing.B) {
+	home := b.TempDir()
+	oldHome, oldUser := os.Getenv("HOME"), os.Getenv("USERPROFILE")
+	os.Setenv("HOME", home)
+	os.Setenv("USERPROFILE", home)
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUser)
+	}()
+	s, err := Open()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer s.Close()
+	messages := make([]graph.Message, 0, 100000)
+	for i := 0; i < 100000; i++ {
+		messages = append(messages, graph.Message{ID: "m", Subject: "账单通知", BodyPreview: "本月账单内容", ReceivedDateTime: time.Now()})
+	}
+	if err := s.replaceMessages("bench", messages); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.Search("bench", "账单", "mail", 20); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

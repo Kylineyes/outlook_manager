@@ -24,6 +24,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 审计保留策略配置与手动清理
 - 本地索引、增量同步与离线搜索
 - SQLite + FTS5 全文索引、多账号独立索引和增量写入
+- 邮件高水位增量同步、索引保留清理和大邮箱 benchmark
 - 索引压缩优化和 1 万条级搜索 benchmark
 - 发送邮件
 - 回复、回复全部、转发
@@ -238,7 +239,7 @@ outlookctl mail importance <message-id> --level high
 
 ## MCP
 
-`outlook-mcp` 通过 stdio 暴露 116 个 MCP tools，覆盖：
+`outlook-mcp` 通过 stdio 暴露 118 个 MCP tools，覆盖：
 
 - 账号与认证状态
 - 邮件读取、搜索、发送、回复、转发和草稿
@@ -300,6 +301,7 @@ outlookctl sync run
 outlookctl sync status
 outlookctl sync reset --confirm
 outlookctl sync compact
+outlookctl sync prune --account zero-67@hotmail.com --older-than-days 90 --confirm
 outlookctl sync status --account zero-67@hotmail.com
 outlookctl search --query 账单 --account zero-67@hotmail.com
 outlookctl search --query <关键字> --type all
