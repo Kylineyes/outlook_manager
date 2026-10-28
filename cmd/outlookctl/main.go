@@ -38,7 +38,12 @@ func main() {
 			return
 		}
 		fmt.Fprintf(os.Stderr, "outlookctl: %v\n", err)
-		os.Exit(1)
+		code := 1
+		var coded interface{ ExitCode() int }
+		if errors.As(err, &coded) {
+			code = coded.ExitCode()
+		}
+		os.Exit(code)
 	}
 }
 
@@ -49,7 +54,11 @@ func parseCommandFlags(fs *flag.FlagSet, args []string) error {
 		fs.SetOutput(os.Stdout)
 		fs.PrintDefaults()
 	}
-	return fs.Parse(args)
+	err := fs.Parse(args)
+	if err != nil && !errors.Is(err, flag.ErrHelp) {
+		return withExitCode(2, err)
+	}
+	return err
 }
 
 // helpRequested 判断参数中是否包含 --help 或 -h。
@@ -71,6 +80,7 @@ func printHelpAndReturn(usage string) error {
 // run 根据第一个参数分发子命令。
 func run(args []string) error {
 	args, noUpdateCheck := stripGlobalUpdateFlag(args)
+	args = resolveAlias(args)
 	if len(args) == 0 {
 		printUsage()
 		return nil
@@ -114,7 +124,10 @@ func run(args []string) error {
 		return nil
 	default:
 		printUsage()
-		return fmt.Errorf("未知命令: %s", args[0])
+		if suggestion := suggestCommand(args[0]); suggestion != "" {
+			return usageError("未知命令: %s；你是否想运行: %s", args[0], suggestion)
+		}
+		return usageError("未知命令: %s", args[0])
 	}
 }
 
@@ -565,6 +578,9 @@ func runMailList(args []string) error {
 		return nil
 	}
 
+	if format == "yaml" || format == "jsonl" {
+		return printOutputValue(messages, format)
+	}
 	if format == "table" {
 		return printMailTable(messages, selected.Username)
 	}
@@ -795,6 +811,7 @@ func runMailSend(args []string) error {
 	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
 	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
 	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
+	noProgressFlag := fs.Bool("no-progress", false, "不显示大附件上传进度")
 	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
@@ -820,6 +837,7 @@ func runMailSend(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+	ctx = withUploadProgress(ctx, *noProgressFlag)
 
 	client, err := auth.NewClient()
 	if err != nil {
@@ -1394,6 +1412,7 @@ func runMailDraftCreate(args []string) error {
 	importanceFlag := fs.String("importance", "", "重要性: low/normal/high")
 	readReceiptFlag := fs.Bool("read-receipt", false, "请求已读回执")
 	deliveryReceiptFlag := fs.Bool("delivery-receipt", false, "请求送达回执")
+	noProgressFlag := fs.Bool("no-progress", false, "不显示大附件上传进度")
 	if err := parseCommandFlags(fs, args); err != nil {
 		return err
 	}
@@ -1410,6 +1429,7 @@ func runMailDraftCreate(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	ctx = withUploadProgress(ctx, *noProgressFlag)
 
 	client, err := auth.NewClient()
 	if err != nil {
@@ -2064,6 +2084,9 @@ func runCalendarList(args []string) error {
 		return nil
 	}
 
+	if format == "yaml" || format == "jsonl" {
+		return printOutputValue(events, format)
+	}
 	if format == "table" {
 		return printCalendarTable(events, selected.Username)
 	}
@@ -2197,6 +2220,9 @@ func runContactsList(args []string) error {
 		return nil
 	}
 
+	if format == "yaml" || format == "jsonl" {
+		return printOutputValue(contacts, format)
+	}
 	if format == "table" {
 		return printContactsTable(contacts, selected.Username)
 	}

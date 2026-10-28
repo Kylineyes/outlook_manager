@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -10,11 +11,29 @@ import (
 // runUI 提供简单的交互式文本菜单。
 func runUI(args []string) error {
 	if len(args) > 0 && helpRequested(args[:1]) {
-		fmt.Fprintln(os.Stdout, "用法: outlookctl ui")
+		fmt.Fprintln(os.Stdout, "用法: outlookctl ui [--plain]")
 		return nil
+	}
+	fs := flag.NewFlagSet("ui", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	plainFlag := fs.Bool("plain", false, "使用普通文本菜单")
+	if err := parseCommandFlags(fs, args); err != nil {
+		return err
+	}
+	plain := *plainFlag
+	if !plain {
+		info, err := os.Stdout.Stat()
+		plain = err != nil || info.Mode()&os.ModeCharDevice == 0
+	}
+	if !plain {
+		fmt.Fprint(os.Stdout, "\x1b[?1049h\x1b[?25l")
+		defer fmt.Fprint(os.Stdout, "\x1b[?25h\x1b[?1049l")
 	}
 	reader := bufio.NewReader(os.Stdin)
 	for {
+		if !plain {
+			fmt.Fprint(os.Stdout, "\x1b[2J\x1b[H")
+		}
 		fmt.Fprintln(os.Stdout, "")
 		fmt.Fprintln(os.Stdout, "Outlook Manager 交互菜单")
 		fmt.Fprintln(os.Stdout, "  1. 邮件列表")

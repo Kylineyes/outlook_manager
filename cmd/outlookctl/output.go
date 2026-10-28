@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/Kylineyes/outlook-manager/internal/cliconfig"
 	"github.com/Kylineyes/outlook-manager/internal/cliui"
@@ -22,7 +26,7 @@ func effectiveOutputFormat(option string, jsonFlag bool) (string, error) {
 		value = "text"
 	}
 	switch value {
-	case "text", "table", "json":
+	case "text", "table", "json", "yaml", "jsonl":
 		return value, nil
 	default:
 		return "", fmt.Errorf("不支持的输出格式: %s", value)
@@ -90,4 +94,38 @@ func printContactsTable(contacts []graph.Contact, username string) error {
 
 func printJSONValue(value any) error {
 	return printJSON(value)
+}
+
+func printOutputValue(value any, format string) error {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "json":
+		return printJSON(value)
+	case "yaml":
+		data, err := yaml.Marshal(value)
+		if err != nil {
+			return err
+		}
+		fmt.Fprint(os.Stdout, string(data))
+		return nil
+	case "jsonl":
+		rv := reflect.ValueOf(value)
+		if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
+			for i := 0; i < rv.Len(); i++ {
+				data, err := json.Marshal(rv.Index(i).Interface())
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(os.Stdout, string(data))
+			}
+			return nil
+		}
+		data, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, string(data))
+		return nil
+	default:
+		return fmt.Errorf("不支持的输出格式: %s", format)
+	}
 }

@@ -116,12 +116,7 @@ func buildMessage(input SendMailInput) (map[string]any, error) {
 // Graph 的 sendMail 接口成功时通常返回 202 Accepted，响应体为空。
 func SendMail(ctx context.Context, accessToken string, input SendMailInput) error {
 	if hasLargeAttachments(input.Attachments) {
-		draftID, err := CreateDraft(ctx, accessToken, input)
-		if err != nil {
-			return err
-		}
-		if err := SendDraft(ctx, accessToken, draftID); err != nil {
-			_ = DeleteMessage(ctx, accessToken, draftID)
+		if err := sendMailWithLargeAttachments(ctx, accessToken, input); err != nil {
 			return fmt.Errorf("发送带大附件的草稿失败: %w", err)
 		}
 		audit.Log("mail.send", map[string]any{"attachmentCount": len(input.Attachments)})

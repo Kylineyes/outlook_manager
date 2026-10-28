@@ -89,6 +89,8 @@ func printAuditEntries(entries []map[string]any, options auditQueryOptions) erro
 	switch format {
 	case "json":
 		return printJSON(entries)
+	case "yaml":
+		return printOutputValue(entries, "yaml")
 	case "jsonl":
 		for _, entry := range entries {
 			data, err := json.Marshal(entry)

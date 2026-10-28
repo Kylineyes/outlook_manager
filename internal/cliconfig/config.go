@@ -12,14 +12,15 @@ import (
 
 // Settings 表示 CLI 偏好设置。
 type Settings struct {
-	Output          string `json:"output"`
-	Color           string `json:"color"`
-	AutoUpdateCheck bool   `json:"autoUpdateCheck"`
+	Output          string            `json:"output"`
+	Color           string            `json:"color"`
+	AutoUpdateCheck bool              `json:"autoUpdateCheck"`
+	Aliases         map[string]string `json:"aliases,omitempty"`
 }
 
 // Default 返回默认设置。
 func Default() Settings {
-	return Settings{Output: "text", Color: "auto"}
+	return Settings{Output: "text", Color: "auto", Aliases: map[string]string{}}
 }
 
 // Path 返回 CLI 配置文件路径。
@@ -53,6 +54,9 @@ func Load() Settings {
 		settings.Color = file.Color
 	}
 	settings.AutoUpdateCheck = file.AutoUpdateCheck
+	if file.Aliases != nil {
+		settings.Aliases = file.Aliases
+	}
 	return settings
 }
 
@@ -63,6 +67,9 @@ func Save(settings Settings) error {
 	}
 	if settings.Color == "" {
 		settings.Color = "auto"
+	}
+	if settings.Aliases == nil {
+		settings.Aliases = map[string]string{}
 	}
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {

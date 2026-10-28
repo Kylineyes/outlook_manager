@@ -14,7 +14,7 @@ import (
 )
 
 // CreateDraft 创建一封草稿邮件，并返回草稿 ID。
-func CreateDraft(ctx context.Context, accessToken string, input SendMailInput) (string, error) {
+func createDraftSkeleton(ctx context.Context, accessToken string, input SendMailInput) (string, error) {
 	message, err := buildMessage(input)
 	if err != nil {
 		return "", err
@@ -53,11 +53,20 @@ func CreateDraft(ctx context.Context, accessToken string, input SendMailInput) (
 	if result.ID == "" {
 		return "", fmt.Errorf("草稿响应缺少 id")
 	}
-	if err := uploadLargeAttachmentsToDraft(ctx, accessToken, result.ID, input.Attachments); err != nil {
-		_ = DeleteMessage(ctx, accessToken, result.ID)
+	return result.ID, nil
+}
+
+// CreateDraft 创建草稿并上传大附件。
+func CreateDraft(ctx context.Context, accessToken string, input SendMailInput) (string, error) {
+	draftID, err := createDraftSkeleton(ctx, accessToken, input)
+	if err != nil {
 		return "", err
 	}
-	return result.ID, nil
+	if err := uploadLargeAttachmentsToDraft(ctx, accessToken, draftID, input.Attachments); err != nil {
+		_ = DeleteMessage(ctx, accessToken, draftID)
+		return "", err
+	}
+	return draftID, nil
 }
 
 // ListDrafts 读取草稿箱中的邮件列表。

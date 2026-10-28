@@ -49,3 +49,19 @@ func maybeStartupUpdateCheck(args []string, disabled bool) {
 	}
 	fmt.Fprintln(os.Stderr, "运行 outlookctl update apply --yes 可升级")
 }
+
+func resolveAlias(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	settings := cliconfig.Load()
+	command, ok := settings.Aliases[args[0]]
+	if !ok {
+		return args
+	}
+	parts := strings.Fields(command)
+	if len(parts) == 0 || parts[0] == args[0] {
+		return args
+	}
+	return append(parts, args[1:]...)
+}
