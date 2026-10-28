@@ -87,6 +87,7 @@ outlook_manager/
 - `outlookctl sync reset`
 - `outlookctl sync compact`
 - `outlookctl sync prune`
+- `scripts/perf-localindex.ps1` / `.sh`
 - `outlookctl search`
 - `outlookctl mailbox settings`
 - `outlookctl mailbox auto-reply`

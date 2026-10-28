@@ -25,6 +25,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 本地索引、增量同步与离线搜索
 - SQLite + FTS5 全文索引、多账号独立索引和增量写入
 - 邮件高水位增量同步、索引保留清理和大邮箱 benchmark
+- 50 万条邮件、多账号并发和批量 upsert 性能基准
 - 索引压缩优化和 1 万条级搜索 benchmark
 - 发送邮件
 - 回复、回复全部、转发
@@ -260,6 +261,7 @@ outlookctl mail importance <message-id> --level high
 
 ```text
 docs/mcp.md
+docs/performance.md
 ```
 
 发布签名和校验说明见 `docs/release-signing.md`，版本变更见 `CHANGELOG.md`。
@@ -287,6 +289,7 @@ docs/mcp.md
 - `index.db`：SQLite + FTS5 本地索引，按账号隔离
 - `cli-config.json`：CLI 输出格式、颜色和自动更新偏好
 - `uploads\`：大附件断点续传状态
+- `scripts/perf-localindex.ps1` / `.sh`：本地索引性能基准脚本
 - `audit-config.json`：审计日志轮转和保留策略
 
 查询审计日志：
