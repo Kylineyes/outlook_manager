@@ -92,6 +92,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - Shell 自动补全、彩色/表格输出和交互菜单
 - CLI 配置文件与输出格式偏好
 - 自动更新检查、下载、SHA256/GPG 校验、替换和回滚
+- 启动时每日自动更新检查与缓存，支持 --no-update-check
 
 ## 环境要求
 
@@ -314,6 +315,7 @@ outlookctl audit cleanup
 outlookctl update check
 outlookctl completion powershell
 outlookctl config set --output table
+outlookctl config set --auto-update-check
 outlookctl mail list --output table
 outlookctl ui
 outlookctl update download

@@ -76,6 +76,7 @@ outlook_manager/
 - `outlookctl config`
 - `outlookctl ui`
 - `outlookctl update check`
+- 全局参数 `--no-update-check`：跳过启动更新检查
 - `outlookctl update download`
 - `outlookctl update apply`
 - `outlookctl update rollback`

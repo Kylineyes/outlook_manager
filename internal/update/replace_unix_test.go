@@ -35,3 +35,33 @@ func TestReplaceBinaryUnix(t *testing.T) {
 		t.Fatalf("current=%q backup=%q", currentData, backupData)
 	}
 }
+
+func TestApplyAndRollbackUnix(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "outlookctl")
+	newBinary := filepath.Join(t.TempDir(), "outlookctl.new")
+	if err := os.WriteFile(exe, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newBinary, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	apply, err := ApplyDownloadTo(&DownloadResult{BinaryPath: newBinary}, exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if apply.BackupPath == "" {
+		t.Fatal("backup path is empty")
+	}
+	data, _ := os.ReadFile(exe)
+	if string(data) != "new" {
+		t.Fatalf("exe = %q", data)
+	}
+	if _, err := RollbackFrom(exe); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(exe)
+	if string(data) != "old" {
+		t.Fatalf("rolled back exe = %q", data)
+	}
+}

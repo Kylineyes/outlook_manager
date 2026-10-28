@@ -274,12 +274,21 @@ func verifyOptionalGPG(ctx context.Context, release *Release, dir string) (bool,
 
 // ApplyDownload 备份并替换当前二进制。
 func ApplyDownload(result *DownloadResult) (*ApplyResult, error) {
-	if result == nil || strings.TrimSpace(result.BinaryPath) == "" {
-		return nil, fmt.Errorf("更新文件不能为空")
-	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("获取当前可执行文件失败: %w", err)
+	}
+	return ApplyDownloadTo(result, exePath)
+}
+
+// ApplyDownloadTo 备份并替换指定二进制，供测试和自定义安装路径使用。
+func ApplyDownloadTo(result *DownloadResult, exePath string) (*ApplyResult, error) {
+	if result == nil || strings.TrimSpace(result.BinaryPath) == "" {
+		return nil, fmt.Errorf("更新文件不能为空")
+	}
+	exePath = strings.TrimSpace(exePath)
+	if exePath == "" {
+		return nil, fmt.Errorf("目标二进制路径不能为空")
 	}
 	backupPath := exePath + ".bak"
 	if err := replaceBinary(exePath, result.BinaryPath, backupPath); err != nil {
@@ -301,6 +310,15 @@ func Rollback() (*ApplyResult, error) {
 	exePath, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("获取当前可执行文件失败: %w", err)
+	}
+	return RollbackFrom(exePath)
+}
+
+// RollbackFrom 使用备份恢复指定二进制。
+func RollbackFrom(exePath string) (*ApplyResult, error) {
+	exePath = strings.TrimSpace(exePath)
+	if exePath == "" {
+		return nil, fmt.Errorf("目标二进制路径不能为空")
 	}
 	backupPath := exePath + ".bak"
 	if _, err := os.Stat(backupPath); err != nil {

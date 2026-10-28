@@ -70,10 +70,12 @@ func printHelpAndReturn(usage string) error {
 
 // run 根据第一个参数分发子命令。
 func run(args []string) error {
+	args, noUpdateCheck := stripGlobalUpdateFlag(args)
 	if len(args) == 0 {
 		printUsage()
 		return nil
 	}
+	maybeStartupUpdateCheck(args, noUpdateCheck)
 
 	switch args[0] {
 	case "calendar":
@@ -4756,6 +4758,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stdout, `outlookctl - Outlook Manager 命令行工具
 
 用法:
+  全局选项: --no-update-check                    跳过启动更新检查
   outlookctl auth login                    通过 Device Code 登录并保存账号
   outlookctl auth status                   验证本地 token 缓存和静默刷新
   outlookctl account list                  查看本地账号档案
