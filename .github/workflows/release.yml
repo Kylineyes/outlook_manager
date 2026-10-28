@@ -73,8 +73,6 @@ jobs:
       GOOS: ${{ matrix.platform }}
       GOARCH: ${{ matrix.arch }}
       CGO_ENABLED: '0'
-      WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
-      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -99,28 +97,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "outlookctl 构建失败" }
           go build -trimpath -ldflags "-s -w -X main.version=$env:VERSION" -o build/pkg/outlook-mcp.exe ./cmd/outlook-mcp
           if ($LASTEXITCODE -ne 0) { throw "outlook-mcp 构建失败" }
-
-      - name: Windows Authenticode 签名
-        if: matrix.platform == 'windows' && env.WINDOWS_CERT_BASE64 != ''
-        shell: pwsh
-        run: |
-          $certPath = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
-          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64))
-          $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-          if ($signtool) {
-            $signtoolPath = $signtool.Source
-          } else {
-            $candidate = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
-            if (-not $candidate) { throw '找不到 signtool.exe' }
-            $signtoolPath = $candidate.FullName
-          }
-          foreach ($exe in @('build/pkg/outlookctl.exe', 'build/pkg/outlook-mcp.exe')) {
-            & $signtoolPath sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certPath /p $env:WINDOWS_CERT_PASSWORD $exe
-            if ($LASTEXITCODE -ne 0) { throw "签名失败: $exe" }
-            & $signtoolPath verify /pa /v $exe
-            if ($LASTEXITCODE -ne 0) { throw "签名校验失败: $exe" }
-          }
-          Remove-Item $certPath -Force
 
       - name: 打包 Windows
         if: matrix.platform == 'windows'
@@ -157,8 +133,6 @@ jobs:
       - verify-tag
       - build
     runs-on: ubuntu-latest
-    env:
-      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -198,16 +172,6 @@ jobs:
           fi
           echo "" >> dist/RELEASE_NOTES.md
 
-      - name: GPG 签名 SHA256SUMS
-        if: env.GPG_PRIVATE_KEY != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-          gpg --batch --yes --armor --detach-sign --output dist/SHA256SUMS.asc dist/SHA256SUMS
-          gpg --armor --export > dist/public-key.asc
-          ls -l dist/SHA256SUMS.asc dist/public-key.asc
-
       - name: 发布 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -216,8 +180,6 @@ jobs:
           files: |
             dist/*.zip
             dist/SHA256SUMS
-            dist/SHA256SUMS.asc
-            dist/public-key.asc
             dist/README.md
             dist/LICENSE
             dist/CHANGELOG.md

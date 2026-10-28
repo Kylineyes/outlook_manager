@@ -96,7 +96,7 @@ Outlook Manager 是一个通过 Microsoft Graph 官方 API 操作 Outlook 账号
 - 全屏文本菜单（TTY 自动启用）
 - 大附件上传进度、断点状态和中断续传
 - CLI 配置文件与输出格式偏好
-- 自动更新检查、下载、SHA256/GPG 校验、替换和回滚
+- 自动更新检查、下载、SHA256 校验、替换和回滚
 - 启动时每日自动更新检查与缓存，支持 --no-update-check
 
 ## 环境要求
@@ -264,7 +264,7 @@ docs/mcp.md
 docs/performance.md
 ```
 
-发布签名和校验说明见 `docs/release-signing.md`，版本变更见 `CHANGELOG.md`。
+发布校验说明见 `docs/release-verification.md`，版本变更见 `CHANGELOG.md`。
 
 双账号日历验证计划见：`docs/calendar-invite-test-plan.md`。
 

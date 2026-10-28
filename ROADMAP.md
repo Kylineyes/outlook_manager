@@ -31,7 +31,7 @@
 - 并发/竞态测试、benchmark 和 CI 覆盖率流程
 - MCP / CLI 文档和诊断命令
 - 多架构发布：Windows/Linux amd64 与 arm64
-- SHA256SUMS 与可选 Authenticode/GPG 代码签名
+- SHA256SUMS 与永久 unsigned 发布策略
 - CHANGELOG、Release Notes 模板和发布文档
 - 自动更新检查
 - Release 附带 README、LICENSE、CHANGELOG

@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
 ### Added
 
 - Linux Secret Service / macOS Keychain 安全存储
@@ -17,16 +19,17 @@
 - 联系人重复检测与合并
 - 批量邮件状态操作
 - EML/MIME 导入导出
-- 多平台发布 workflow、SHA256SUMS 和可选代码签名
+- 多平台发布 workflow 和 SHA256SUMS
 - Shell 自动补全、彩色/表格输出和交互菜单
 - YAML/JSONL 输出、自定义命令别名、命令建议和统一退出码
 - 全屏文本菜单、大附件上传进度和可恢复上传
 - CLI 配置文件与输出格式偏好
-- 自动更新下载、SHA256/GPG 校验、替换和回滚
+- 自动更新下载、SHA256 校验、替换和回滚
 - 启动时每日自动更新检查、缓存和 --no-update-check
 
 ### Changed
 
+- Release 永久采用 unsigned 策略，仅提供 SHA256SUMS
 - MCP 工具数量增加到 118
 - 测试使用临时 HOME/USERPROFILE 隔离
 - ICS golden 测试兼容不同换行符

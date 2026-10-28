@@ -27,17 +27,11 @@
 sha256sum -c SHA256SUMS
 ```
 
-如果发布包含 GPG 签名，可执行：
+## 未签名说明
 
-```text
-gpg --verify SHA256SUMS.asc SHA256SUMS
-```
+本项目的 Release 不提供 Windows Authenticode 或 GPG 签名。
 
-## 代码签名
-
-- Windows 二进制在配置了 Authenticode 证书时会进行 SHA-256 签名。
-- Linux/通用校验文件在配置了 GPG 私钥时会生成 `SHA256SUMS.asc`。
-- 如果本次发布未配置签名密钥，压缩包仍会提供 SHA256 校验和。
+Windows 可能显示 `Unknown publisher` 或 SmartScreen 提示，请以 SHA256SUMS 校验结果为准。
 
 ## 兼容性
 
